@@ -1,0 +1,10 @@
+node_modules
+.next
+__pycache__
+venv
+.env
+.env.local
+*.mp4
+*.jpg
+*.png
+.DS_Store
