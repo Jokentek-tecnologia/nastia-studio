@@ -6,19 +6,19 @@ import {
   Sparkles, Image as ImageIcon, Upload, X, Video as VideoIcon,
   Film, XCircle, Edit, LogOut, User, Coins, Crown, Gift,
   Share2, Download, Instagram, Globe, MessageCircle, Plus, Copy,
-  ArrowRightCircle, Layers
+  ArrowRightCircle, Layers, Smartphone
 } from "lucide-react";
 import dynamic from "next/dynamic";
-
-// Importação preguiçosa (Lazy Load) com SSR desligado para evitar erro no mobile
-const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
-  ssr: false,
-  loading: () => <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 text-white">Carregando Editor...</div>
-});
 import { supabase } from "../lib/supabase";
 import Login from "../components/Login";
 import ChatWidget from "../components/ChatWidget";
-import StoreModal from "../components/StoreModal"; // <--- IMPORTAÇÃO NOVA
+import StoreModal from "../components/StoreModal";
+
+// Carregamento dinâmico do editor para evitar erro de 'window not defined'
+const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
+  ssr: false,
+  loading: () => <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 text-white">Carregando Editor...</div>
+});
 
 const SHORT_ADS = [
   "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
@@ -47,16 +47,26 @@ export default function Home() {
   const [currentAdUrl, setCurrentAdUrl] = useState("");
   const [pendingResult, setPendingResult] = useState<string | null>(null);
   const [adProgress, setAdProgress] = useState(0);
+  const [isMobile, setIsMobile] = useState(false); // Detecção de Mobile
 
   // Modais
   const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [isStoreOpen, setIsStoreOpen] = useState(false); // <--- ESTADO NOVO
+  const [isStoreOpen, setIsStoreOpen] = useState(false);
 
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // --- LOGICA DE PERFIL ---
+  // --- DETECÇÃO DE MOBILE (Para evitar crash de vídeo) ---
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768); // Considera mobile telas menores que 768px
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (data) {
@@ -82,7 +92,6 @@ export default function Home() {
 
   const handleLogout = async () => await supabase.auth.signOut();
 
-  // --- HANDLERS DE ARQUIVO ---
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
@@ -135,7 +144,6 @@ export default function Home() {
     if (mode === "video") cost = 20;
 
     if (credits < cost) {
-      // Se faltar crédito, abre a loja automaticamente
       alert(`Saldo insuficiente! Necessário: ${cost}. Abrindo loja...`);
       setIsStoreOpen(true);
       return;
@@ -253,10 +261,11 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#050505] text-white flex flex-col font-sans relative overflow-x-hidden">
 
-      {/* --- HEADER --- */}
+      {/* HEADER */}
       <header className="w-full p-4 border-b border-gray-800 bg-black/50 backdrop-blur-md flex justify-between items-center sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          <img src="/logo_site.png" alt="NastIA Logo" className="h-10 w-auto object-contain" />
+          {/* LOGO ATUALIZADA (usando o nome novo app-logo.png) */}
+          <img src="/app-logo.png" alt="NastIA Logo" className="h-10 w-auto object-contain" />
           <div className="hidden sm:block">
             <h1 className="font-bold text-lg leading-none">NastIA Studio</h1>
             <p className="text-[10px] text-gray-500">Plataforma Criativa</p>
@@ -264,7 +273,6 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-4">
-          {/* BOTÃO DE CRÉDITOS (ABRE A LOJA) */}
           <div
             className="flex flex-col items-end cursor-pointer hover:opacity-80 transition-opacity"
             onClick={() => setIsStoreOpen(true)}
@@ -281,7 +289,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* --- MODAIS --- */}
+      {/* MODAIS */}
       {isEditorOpen && resultUrl && <ImageEditor imageUrl={resultUrl} onClose={() => setIsEditorOpen(false)} />}
 
       {isStoreOpen && (
@@ -294,28 +302,42 @@ export default function Home() {
         />
       )}
 
-      {/* --- TELA DE ESPERA --- */}
+      {/* --- TELA DE ESPERA (MODO HÍBRIDO: VÍDEO OU SPINNER) --- */}
       {loading && (
-        <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
+        <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center">
           <div className="absolute top-8 right-8 flex items-center gap-2 text-yellow-500 animate-pulse z-20">
             <Sparkles className="w-5 h-5" />
             <span className="font-bold tracking-widest">{pendingResult ? "FINALIZANDO..." : "CRIANDO..."}</span>
           </div>
-          <video
-            ref={videoRef}
-            src={currentAdUrl}
-            autoPlay
-            muted
-            playsInline // <--- OBRIGATÓRIO PARA CELULAR
-            webkit-playsinline="true" // <--- GARANTIA PARA IPHONE ANTIGO
-            onEnded={handleAdEnded}
-            className="w-full h-full object-cover opacity-60 absolute inset-0"
-          />
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} /></div>
+
+          {/* SE FOR CELULAR: Mostra Spinner (Seguro) */}
+          {isMobile ? (
+            <div className="flex flex-col items-center gap-6 z-20">
+              <div className="w-20 h-20 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
+              <div>
+                <h2 className="text-2xl font-bold text-white mb-2">Criando sua Mágica...</h2>
+                <p className="text-gray-400 text-sm max-w-xs mx-auto">Isso pode levar até 60 segundos. Estamos usando GPUs de alta performance para gerar seu conteúdo.</p>
+              </div>
+            </div>
+          ) : (
+            // SE FOR PC: Mostra Vídeo (Cinema)
+            <video
+              ref={videoRef}
+              src={currentAdUrl}
+              autoPlay
+              muted
+              playsInline
+              onEnded={handleAdEnded}
+              className="w-full h-full object-cover opacity-60 absolute inset-0"
+            />
+          )}
+
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800">
+            <div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} />
+          </div>
         </div>
       )}
 
-      {/* --- CONTEÚDO PRINCIPAL --- */}
       <div className="flex-1 flex flex-col items-center justify-center p-4 py-10 w-full max-w-3xl mx-auto space-y-8">
 
         <div className="flex w-full bg-gray-900 p-1.5 rounded-2xl border border-gray-800">
@@ -348,7 +370,6 @@ export default function Home() {
               <input type="file" ref={fileInputRef} onChange={handleImageSelect} className="hidden" accept="image/*" multiple={mode === "image"} />
             </div>
 
-            {/* FEEDBACK VISUAL DE CONTEXTO */}
             {isEditing && (
               <div className="flex items-center gap-2 text-xs text-yellow-500 bg-yellow-500/10 p-2 rounded-lg border border-yellow-500/20">
                 <Layers className="w-4 h-4" />
@@ -369,13 +390,12 @@ export default function Home() {
             className="w-full bg-[#18181b] border border-gray-700 rounded-xl p-4 text-gray-200 focus:ring-2 focus:ring-yellow-500 focus:outline-none resize-none h-32 mb-4 placeholder:text-gray-600"
           />
 
-          <button onClick={handleGenerate} disabled={loading || !prompt} className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all shadow-xl ${loading || !prompt ? "bg-gray-800 text-gray-500 cursor-not-allowed" : "bg-white text-black hover:bg-gray-200 hover:scale-[1.01]"}`}>
+          <button onClick={handleGenerate} disabled={loading || !prompt || credits < currentCost} className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all shadow-xl ${loading || credits < currentCost ? "bg-gray-800 text-gray-500 cursor-not-allowed" : "bg-white text-black hover:bg-gray-200 hover:scale-[1.01]"}`}>
             {loading ? <div className="animate-spin w-6 h-6 border-2 border-black border-t-transparent rounded-full" /> : <Sparkles className="w-5 h-5 fill-black" />}
-            {loading ? "Processando..." : `${isEditing ? 'Editar Imagem' : 'Gerar'} (-${currentCost})`}
+            {loading ? "Processando..." : (credits < currentCost ? "Saldo Insuficiente" : `${isEditing ? 'Editar Imagem' : 'Gerar'} (-${currentCost})`)}
           </button>
         </div>
 
-        {/* --- RESULTADO --- */}
         {resultUrl && !loading && (
           <div className="w-full bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl animate-in fade-in slide-in-from-bottom-4">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
