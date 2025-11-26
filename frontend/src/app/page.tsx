@@ -8,7 +8,13 @@ import {
   Share2, Download, Instagram, Globe, MessageCircle, Plus, Copy,
   ArrowRightCircle, Layers
 } from "lucide-react";
-import ImageEditor from "../components/ImageEditor";
+import dynamic from "next/dynamic";
+
+// Importação preguiçosa (Lazy Load) com SSR desligado para evitar erro no mobile
+const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
+  ssr: false,
+  loading: () => <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 text-white">Carregando Editor...</div>
+});
 import { supabase } from "../lib/supabase";
 import Login from "../components/Login";
 import ChatWidget from "../components/ChatWidget";
