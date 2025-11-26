@@ -250,7 +250,7 @@ export default function Home() {
       {/* --- HEADER --- */}
       <header className="w-full p-4 border-b border-gray-800 bg-black/50 backdrop-blur-md flex justify-between items-center sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-lg flex items-center justify-center font-bold text-black text-xl shadow-lg shadow-orange-500/20">N</div>
+          <img src="/logo_site.png" alt="NastIA Logo" className="h-10 w-auto object-contain" />
           <div className="hidden sm:block">
             <h1 className="font-bold text-lg leading-none">NastIA Studio</h1>
             <p className="text-[10px] text-gray-500">Plataforma Criativa</p>
@@ -295,7 +295,16 @@ export default function Home() {
             <Sparkles className="w-5 h-5" />
             <span className="font-bold tracking-widest">{pendingResult ? "FINALIZANDO..." : "CRIANDO..."}</span>
           </div>
-          <video ref={videoRef} src={currentAdUrl} autoPlay muted onEnded={handleAdEnded} className="w-full h-full object-cover opacity-60 absolute inset-0" />
+          <video
+            ref={videoRef}
+            src={currentAdUrl}
+            autoPlay
+            muted
+            playsInline // <--- OBRIGATÓRIO PARA CELULAR
+            webkit-playsinline="true" // <--- GARANTIA PARA IPHONE ANTIGO
+            onEnded={handleAdEnded}
+            className="w-full h-full object-cover opacity-60 absolute inset-0"
+          />
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} /></div>
         </div>
       )}
