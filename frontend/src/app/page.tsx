@@ -6,15 +6,19 @@ import {
   Sparkles, Image as ImageIcon, Upload, X, Video as VideoIcon,
   Film, XCircle, Edit, LogOut, User, Coins, Crown, Gift,
   Share2, Download, Instagram, Globe, MessageCircle, Plus, Copy,
-  ArrowRightCircle, Layers, Smartphone
+  ArrowRightCircle, Layers
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { supabase } from "../lib/supabase";
 import Login from "../components/Login";
 import ChatWidget from "../components/ChatWidget";
 import StoreModal from "../components/StoreModal";
+import AdPlayer from "../components/AdPlayer"; // <--- NOVO COMPONENTE
 
-// Carregamento dinâmico do editor para evitar erro de 'window not defined'
+// IMPORTAÇÃO DIRETA DA LOGO (Garante que funciona)
+import logoImg from "./app-logo.png";
+
+// Carregamento dinâmico do editor
 const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
   ssr: false,
   loading: () => <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 text-white">Carregando Editor...</div>
@@ -47,7 +51,6 @@ export default function Home() {
   const [currentAdUrl, setCurrentAdUrl] = useState("");
   const [pendingResult, setPendingResult] = useState<string | null>(null);
   const [adProgress, setAdProgress] = useState(0);
-  const [isMobile, setIsMobile] = useState(false); // Detecção de Mobile
 
   // Modais
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -55,17 +58,6 @@ export default function Home() {
 
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  // --- DETECÇÃO DE MOBILE (Para evitar crash de vídeo) ---
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768); // Considera mobile telas menores que 768px
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
 
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
@@ -171,7 +163,6 @@ export default function Home() {
         imageFiles.forEach(file => formData.append("files", file));
       } else if (previousResult) {
         try {
-          console.log("Reutilizando imagem anterior para edição...");
           const res = await fetch(previousResult);
           const blob = await res.blob();
           const file = new File([blob], "context_image.jpg", { type: "image/jpeg" });
@@ -239,9 +230,8 @@ export default function Home() {
       setResultUrl(pendingResult);
       setLoading(false);
       setPendingResult(null);
-    } else if (videoRef.current) {
-      videoRef.current.currentTime = 0;
-      videoRef.current.play();
+    } else {
+      // Se for vídeo, o AdPlayer reinicia sozinho se não tiver acabado
     }
   };
 
@@ -261,11 +251,10 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#050505] text-white flex flex-col font-sans relative overflow-x-hidden">
 
-      {/* HEADER */}
       <header className="w-full p-4 border-b border-gray-800 bg-black/50 backdrop-blur-md flex justify-between items-center sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          {/* LOGO ATUALIZADA (usando o nome novo app-logo.png) */}
-          <img src="/app-logo.png" alt="NastIA Logo" className="h-10 w-auto object-contain" />
+          {/* LOGO IMPORTADA VIA CÓDIGO (INFALÍVEL) */}
+          <img src={logoImg.src} alt="NastIA Logo" className="h-10 w-auto object-contain" />
           <div className="hidden sm:block">
             <h1 className="font-bold text-lg leading-none">NastIA Studio</h1>
             <p className="text-[10px] text-gray-500">Plataforma Criativa</p>
@@ -289,7 +278,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* MODAIS */}
       {isEditorOpen && resultUrl && <ImageEditor imageUrl={resultUrl} onClose={() => setIsEditorOpen(false)} />}
 
       {isStoreOpen && (
@@ -302,41 +290,29 @@ export default function Home() {
         />
       )}
 
-      {/* --- TELA DE ESPERA (MODO HÍBRIDO: VÍDEO OU SPINNER) --- */}
+      {/* --- TELA DE ESPERA ROBUSTA (ADPLAYER) --- */}
       {loading && (
-        <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center">
+        <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
           <div className="absolute top-8 right-8 flex items-center gap-2 text-yellow-500 animate-pulse z-20">
             <Sparkles className="w-5 h-5" />
             <span className="font-bold tracking-widest">{pendingResult ? "FINALIZANDO..." : "CRIANDO..."}</span>
           </div>
 
-          {/* SE FOR CELULAR: Mostra Spinner (Seguro) */}
-          {isMobile ? (
-            <div className="flex flex-col items-center gap-6 z-20">
-              <div className="w-20 h-20 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
-              <div>
-                <h2 className="text-2xl font-bold text-white mb-2">Criando sua Mágica...</h2>
-                <p className="text-gray-400 text-sm max-w-xs mx-auto">Isso pode levar até 60 segundos. Estamos usando GPUs de alta performance para gerar seu conteúdo.</p>
-              </div>
-            </div>
-          ) : (
-            // SE FOR PC: Mostra Vídeo (Cinema)
-            <video
-              ref={videoRef}
+          {/* COMPONENTE DE VÍDEO BLINDADO */}
+          <div className="w-full h-full absolute inset-0">
+            <AdPlayer
               src={currentAdUrl}
-              autoPlay
-              muted
-              playsInline
               onEnded={handleAdEnded}
-              className="w-full h-full object-cover opacity-60 absolute inset-0"
             />
-          )}
+          </div>
 
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800">
             <div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} />
           </div>
         </div>
       )}
+
+      {/* ... (O RESTO DO CONTEÚDO SEGUE IGUAL) ... */}
 
       <div className="flex-1 flex flex-col items-center justify-center p-4 py-10 w-full max-w-3xl mx-auto space-y-8">
 
