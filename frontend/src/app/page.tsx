@@ -15,9 +15,6 @@ import ChatWidget from "../components/ChatWidget";
 import StoreModal from "../components/StoreModal";
 import AdPlayer from "../components/AdPlayer"; // <--- NOVO COMPONENTE
 
-// IMPORTAÇÃO DIRETA DA LOGO (Garante que funciona)
-import logoImg from "./app-logo.png";
-
 // Carregamento dinâmico do editor
 const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
   ssr: false,
@@ -253,8 +250,8 @@ export default function Home() {
 
       <header className="w-full p-4 border-b border-gray-800 bg-black/50 backdrop-blur-md flex justify-between items-center sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          {/* LOGO IMPORTADA VIA CÓDIGO (INFALÍVEL) */}
-          <img src={logoImg.src} alt="NastIA Logo" className="h-10 w-auto object-contain" />
+          {/* LOGO USANDO CAMINHO PÚBLICO */}
+          <img src="/app-logo.png" alt="NastIA Logo" className="h-10 w-auto object-contain" />
           <div className="hidden sm:block">
             <h1 className="font-bold text-lg leading-none">NastIA Studio</h1>
             <p className="text-[10px] text-gray-500">Plataforma Criativa</p>
