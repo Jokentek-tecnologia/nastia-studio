@@ -6,7 +6,7 @@ import {
     Sparkles, Image as ImageIcon, Video as VideoIcon,
     Film, XCircle, Edit, LogOut, Coins, Gift,
     Share2, Download, Instagram, Globe, MessageCircle, Plus, Copy,
-    ArrowRightCircle, Layers, Clock, CheckCircle
+    ArrowRightCircle, Layers, Clock, Smartphone, CheckCircle, RectangleHorizontal, RectangleVertical
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { supabase } from "../lib/supabase";
@@ -15,7 +15,7 @@ import ChatWidget from "../components/ChatWidget";
 import StoreModal from "../components/StoreModal";
 import AdPlayer from "../components/AdPlayer";
 
-// Carregamento dinâmico do editor para evitar erro de 'window not defined' no mobile
+// Editor com importação segura para não travar celular
 const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
     ssr: false,
     loading: () => <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 text-white">Carregando Editor...</div>
@@ -31,30 +31,38 @@ const LONG_ADS = [
 ];
 
 export default function Home() {
-    // Auth & Profile
     const [session, setSession] = useState<any>(null);
     const [credits, setCredits] = useState<number>(0);
     const [plan, setPlan] = useState<string>("free");
     const [referralCode, setReferralCode] = useState<string>("");
     const [authLoading, setAuthLoading] = useState(true);
 
-    // App State
     const [mode, setMode] = useState<"image" | "video" | "gallery">("image");
     const [prompt, setPrompt] = useState("");
     const [imageFiles, setImageFiles] = useState<File[]>([]);
-    // Removi isMobile pois não estamos mais usando para esconder componentes
+
+    // NOVO: Aspect Ratio State
+    const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16">("16:9");
 
     const [resultUrl, setResultUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [currentAdUrl, setCurrentAdUrl] = useState("");
     const [pendingResult, setPendingResult] = useState<string | null>(null);
     const [adProgress, setAdProgress] = useState(0);
+    const [isMobile, setIsMobile] = useState(false);
 
     const [history, setHistory] = useState<any[]>([]);
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isStoreOpen, setIsStoreOpen] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Detecção Mobile
+    useEffect(() => {
+        const check = () => setIsMobile(window.innerWidth < 768);
+        check(); window.addEventListener('resize', check);
+        return () => window.removeEventListener('resize', check);
+    }, []);
 
     const fetchProfile = async (userId: string) => {
         const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
@@ -66,33 +74,41 @@ export default function Home() {
     };
 
     const fetchHistory = async (userId: string) => {
-        const { data } = await supabase
-            .from('generations')
-            .select('*')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false })
-            .limit(20);
+        const { data } = await supabase.from('generations').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(20);
         if (data) setHistory(data);
     };
 
+    // EFEITO DE LOGIN + PROCESSAMENTO DE INDICAÇÃO
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session);
-            if (session) {
-                fetchProfile(session.user.id);
-                fetchHistory(session.user.id);
-            }
+            if (session) handleLoginSuccess(session);
             setAuthLoading(false);
         });
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
             setSession(session);
-            if (session) {
-                fetchProfile(session.user.id);
-                fetchHistory(session.user.id);
-            } else setAuthLoading(false);
+            if (session) handleLoginSuccess(session);
+            else setAuthLoading(false);
         });
         return () => subscription.unsubscribe();
     }, []);
+
+    const handleLoginSuccess = async (session: any) => {
+        fetchProfile(session.user.id);
+        fetchHistory(session.user.id);
+
+        // PROCESSA INDICAÇÃO (Dá 50 créditos para quem indicou)
+        const savedRef = localStorage.getItem("nastia_referrer");
+        if (savedRef) {
+            try {
+                await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/track-referral`, {
+                    user_id: session.user.id,
+                    referral_code: savedRef
+                });
+                localStorage.removeItem("nastia_referrer"); // Limpa para não processar de novo
+            } catch (e) { console.log("Erro referral", e); }
+        }
+    };
 
     const handleLogout = async () => await supabase.auth.signOut();
 
@@ -104,28 +120,18 @@ export default function Home() {
         }
     };
 
-    const removeImage = (index: number) => {
-        setImageFiles(prev => prev.filter((_, i) => i !== index));
-    };
+    const removeImage = (index: number) => { setImageFiles(prev => prev.filter((_, i) => i !== index)); };
+    const handleClearAll = () => { setResultUrl(null); setImageFiles([]); setPrompt(""); };
 
-    const handleClearAll = () => {
-        setResultUrl(null);
-        setImageFiles([]);
-        setPrompt("");
-    };
-
-    const handleTransformToVideo = async (targetUrl: string | null) => {
-        const urlToUse = targetUrl || resultUrl;
-        if (!urlToUse) return;
+    const handleTransformToVideo = async () => {
+        if (!resultUrl) return;
         try {
-            const res = await fetch(urlToUse);
+            const res = await fetch(resultUrl);
             const blob = await res.blob();
-            const file = new File([blob], "generated_base.jpg", { type: "image/jpeg" });
+            const file = new File([blob], "base_img.jpg", { type: "image/jpeg" });
             setMode("video"); setImageFiles([file]); setResultUrl(null); setPrompt("");
             window.scrollTo({ top: 0, behavior: 'smooth' });
-        } catch (error) {
-            console.error("Erro ao transformar:", error);
-        }
+        } catch (error) { console.error(error); }
     };
 
     const prepareAd = () => {
@@ -136,43 +142,29 @@ export default function Home() {
 
     const handleGenerate = async () => {
         if (!prompt) return;
-
         const isEditingContext = mode === "image" && resultUrl && imageFiles.length === 0;
         let cost = 5;
         if (mode === "image" && (imageFiles.length > 1 || isEditingContext)) cost = 10;
         if (mode === "video") cost = 20;
 
-        if (credits < cost) {
-            alert(`Saldo insuficiente! Necessário: ${cost}. Abrindo loja...`);
-            setIsStoreOpen(true);
-            return;
-        }
+        if (credits < cost) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
 
-        prepareAd();
-        setLoading(true);
-
-        const previousResult = resultUrl;
-        setResultUrl(null);
-        setPendingResult(null);
+        prepareAd(); setLoading(true); const previousResult = resultUrl; setResultUrl(null); setPendingResult(null);
 
         const formData = new FormData();
         formData.append("user_id", session.user.id);
+        formData.append("aspect_ratio", aspectRatio); // ENVIANDO TAMANHO
 
-        if (isEditingContext) {
-            const engineeredPrompt = `INSTRUCTION: EDIT THE ATTACHED IMAGE. Keep the composition, lighting, and main subject exactly as they are. Only apply this specific change: ${prompt}`;
-            formData.append("prompt", engineeredPrompt);
-        } else {
-            formData.append("prompt", prompt);
-        }
+        if (isEditingContext) formData.append("prompt", `INSTRUCTION: EDIT IMAGE. Change: ${prompt}`);
+        else formData.append("prompt", prompt);
 
         if (mode === "image") {
-            if (imageFiles.length > 0) {
-                imageFiles.forEach(file => formData.append("files", file));
-            } else if (previousResult) {
+            if (imageFiles.length > 0) imageFiles.forEach(file => formData.append("files", file));
+            else if (previousResult) {
                 try {
                     const res = await fetch(previousResult);
                     const blob = await res.blob();
-                    const file = new File([blob], "context_image.jpg", { type: "image/jpeg" });
+                    const file = new File([blob], "ctx.jpg", { type: "image/jpeg" });
                     formData.append("files", file);
                 } catch (e) { }
             }
@@ -181,82 +173,33 @@ export default function Home() {
         }
 
         try {
-            const endpoint = mode === "image"
-                ? `${process.env.NEXT_PUBLIC_API_URL}/generate-image`
-                : `${process.env.NEXT_PUBLIC_API_URL}/generate-video`;
-
+            const endpoint = mode === "image" ? `${process.env.NEXT_PUBLIC_API_URL}/generate-image` : `${process.env.NEXT_PUBLIC_API_URL}/generate-video`;
             const res = await axios.post(endpoint, formData, { headers: { "Content-Type": "multipart/form-data" } });
-
-            fetchProfile(session.user.id);
-            fetchHistory(session.user.id);
-
+            fetchProfile(session.user.id); fetchHistory(session.user.id);
             const url = res.data.image || res.data.video;
-            if (mode === "video") {
-                setResultUrl(url);
-                setLoading(false);
-            } else {
-                setPendingResult(url);
-            }
+
+            // Se for vídeo, fecha o modal na hora. Se for imagem, guarda para o botão de "Ver Resultado"
+            if (mode === "video") { setResultUrl(url); setLoading(false); } else { setPendingResult(url); }
+
         } catch (error: any) {
-            console.error(error);
-            alert(error.response?.data?.detail || "Erro ao gerar.");
-            setLoading(false);
+            console.error(error); alert(error.response?.data?.detail || "Erro ao gerar."); setLoading(false);
             if (mode === "image") setResultUrl(previousResult);
         }
     };
 
-    useEffect(() => {
-        if (mode === "video" && pendingResult) {
-            setResultUrl(pendingResult);
-            setLoading(false);
-            setPendingResult(null);
-        }
-    }, [pendingResult, mode]);
+    // Fecha modal se for video e estiver pronto
+    useEffect(() => { if (mode === "video" && pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } }, [pendingResult, mode]);
 
-    const handleAdEnded = () => {
-        if (mode === "image" && pendingResult) {
-            setResultUrl(pendingResult);
-            setLoading(false);
-            setPendingResult(null);
-        }
-    };
+    // Callback do player de anuncio
+    const handleAdEnded = () => { if (mode === "image" && pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
 
-    const handleSkipAd = () => {
-        if (pendingResult) {
-            setResultUrl(pendingResult);
-            setLoading(false);
-            setPendingResult(null);
-        }
-    };
+    // Botão Pular manual
+    const handleSkipAd = () => { if (pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
 
     const copyReferral = () => { navigator.clipboard.writeText(`https://nastia.com.br?ref=${referralCode}`); alert("Copiado!"); }
-
-    const handleDownload = (url: string, type: string) => {
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `NastIA-${Date.now()}.${type === 'image' ? 'jpg' : 'mp4'}`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-    const handleShare = async (url: string, type: string) => {
-        if (navigator.share) {
-            try {
-                const res = await fetch(url);
-                const blob = await res.blob();
-                const file = new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type });
-                await navigator.share({ files: [file] });
-            } catch (e) { }
-        } else alert("Use Baixar.");
-    };
-
-    useEffect(() => {
-        if (loading) {
-            const i = setInterval(() => setAdProgress(o => (o < 95 ? o + 0.5 : o)), 100);
-            return () => clearInterval(i);
-        }
-    }, [loading]);
+    const handleDownload = (url: string, type: string) => { const link = document.createElement("a"); link.href = url; link.download = `NastIA-${Date.now()}.${type === 'image' ? 'jpg' : 'mp4'}`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
+    const handleShare = async (url: string, type: string) => { if (navigator.share) { try { const res = await fetch(url); const blob = await res.blob(); const file = new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type }); await navigator.share({ files: [file] }); } catch (e) { } } else alert("Use Baixar."); };
+    useEffect(() => { if (loading) { const i = setInterval(() => setAdProgress(o => (o < 95 ? o + 0.5 : o)), 100); return () => clearInterval(i); } }, [loading]);
 
     if (authLoading) return <div className="min-h-screen bg-black flex items-center justify-center text-white"><div className="animate-spin w-8 h-8 border-4 border-yellow-500 border-t-transparent rounded-full"></div></div>;
     if (!session) return <Login />;
@@ -270,10 +213,7 @@ export default function Home() {
             <header className="w-full p-4 border-b border-gray-800 bg-black/50 backdrop-blur-md flex justify-between items-center sticky top-0 z-30">
                 <div className="flex items-center gap-3">
                     <img src="/app-logo.png" alt="NastIA Logo" className="h-10 w-auto object-contain" />
-                    <div className="hidden sm:block">
-                        <h1 className="font-bold text-lg leading-none">NastIA Studio</h1>
-                        <p className="text-[10px] text-gray-500">Plataforma Criativa</p>
-                    </div>
+                    <div className="hidden sm:block"><h1 className="font-bold text-lg leading-none">NastIA Studio</h1><p className="text-[10px] text-gray-500">Plataforma Criativa</p></div>
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="flex flex-col items-end cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setIsStoreOpen(true)}>
@@ -288,6 +228,7 @@ export default function Home() {
             {isEditorOpen && resultUrl && <ImageEditor imageUrl={resultUrl} onClose={() => setIsEditorOpen(false)} />}
             {isStoreOpen && <StoreModal userId={session.user.id} currentPlan={plan} referralCode={referralCode} onClose={() => setIsStoreOpen(false)} onUpdate={() => fetchProfile(session.user.id)} />}
 
+            {/* TELA DE CARREGAMENTO COM ADPLAYER SEGURO */}
             {loading && (
                 <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center">
                     {pendingResult && (
@@ -320,6 +261,12 @@ export default function Home() {
                     <>
                         <div className="w-full bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
                             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-500 via-orange-500 to-purple-500 opacity-20 group-hover:opacity-50 transition-opacity"></div>
+
+                            {/* SELETOR DE FORMATO */}
+                            <div className="flex gap-2 mb-4">
+                                <button onClick={() => setAspectRatio("16:9")} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold border transition-all ${aspectRatio === "16:9" ? "bg-white text-black border-white" : "bg-transparent text-gray-500 border-gray-700 hover:border-gray-500"}`}><RectangleHorizontal className="w-4 h-4" /> Horizontal (16:9)</button>
+                                <button onClick={() => setAspectRatio("9:16")} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold border transition-all ${aspectRatio === "9:16" ? "bg-white text-black border-white" : "bg-transparent text-gray-500 border-gray-700 hover:border-gray-500"}`}><RectangleVertical className="w-4 h-4" /> Vertical (9:16)</button>
+                            </div>
 
                             <div className="space-y-4 mb-6">
                                 <div className="flex flex-wrap gap-3">
@@ -354,7 +301,11 @@ export default function Home() {
                                     <h3 className="text-gray-400 flex items-center gap-2 font-medium"><Sparkles className="w-4 h-4 text-green-500" /> Resultado Pronto</h3>
                                     <div className="flex flex-wrap gap-2">
                                         {mode === "image" && <button onClick={() => handleTransformToVideo(null)} className="flex items-center gap-1.5 bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-blue-500/20"><ArrowRightCircle className="w-3 h-3" /> Animar</button>}
-                                        <button onClick={() => setIsEditorOpen(true)} className="flex items-center gap-1.5 bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"><Edit className="w-3 h-3" /> Editar</button>
+
+                                        {!isMobile && mode === "image" && (
+                                            <button onClick={() => setIsEditorOpen(true)} className="flex items-center gap-1.5 bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"><Edit className="w-3 h-3" /> Editar</button>
+                                        )}
+
                                         <button onClick={() => handleShare(resultUrl, mode)} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors"><Share2 className="w-4 h-4" /></button>
                                         <button onClick={() => handleDownload(resultUrl, mode)} className="p-2 bg-white text-black hover:bg-gray-200 rounded-lg transition-colors shadow-lg shadow-white/10"><Download className="w-4 h-4" /></button>
                                     </div>
@@ -380,7 +331,6 @@ export default function Home() {
                                         <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
                                             <p className="text-[10px] text-gray-300 text-center line-clamp-2">{item.prompt}</p>
                                             <button onClick={() => handleDownload(item.url, item.type)} className="p-2 bg-white text-black rounded-full hover:scale-110 transition-transform"><Download className="w-4 h-4" /></button>
-                                            {item.type === 'image' && <button onClick={() => handleTransformToVideo(item.url)} className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-500" title="Animar"><ArrowRightCircle className="w-4 h-4" /></button>}
                                         </div>
                                     </div>
                                 ))}
