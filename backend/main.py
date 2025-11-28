@@ -17,14 +17,12 @@ from supabase import create_client, Client
 from pydantic import BaseModel
 import stripe
 
-# Patch para compatibilidade de imagem
 if not hasattr(Image, 'ANTIALIAS'):
     Image.ANTIALIAS = Image.Resampling.LANCZOS
 
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
-# Configurações
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -56,14 +54,10 @@ def upload_to_supabase(file_bytes: bytes, file_ext: str, content_type: str) -> s
     try:
         supabase.storage.from_("gallery").upload(filename, file_bytes, {"content-type": content_type})
         return f"{SUPABASE_URL}/storage/v1/object/public/gallery/{filename}"
-    except Exception as e:
-        print(f"Erro Upload Supabase: {e}")
-        # Fallback: retorna string vazia ou trata erro
-        return ""
+    except: return ""
 
 def save_to_history(user_id: str, type: str, url: str, prompt: str):
-    try:
-        supabase.table("generations").insert({"user_id": user_id, "type": type, "url": url, "prompt": prompt}).execute()
+    try: supabase.table("generations").insert({"user_id": user_id, "type": type, "url": url, "prompt": prompt}).execute()
     except: pass
 
 def apply_watermark(img: Image.Image, plan: str) -> Image.Image:
@@ -71,53 +65,42 @@ def apply_watermark(img: Image.Image, plan: str) -> Image.Image:
     base = img.convert("RGBA")
     w, h = base.size
     logo_path = Path(__file__).parent / "logo.png"
-    
     if logo_path.exists():
         try:
             logo = Image.open(logo_path).convert("RGBA")
-            # Logo menor (12% da largura)
             lw = int(w * 0.12)
             ar = logo.width / logo.height
             lh = int(lw / ar)
             logo = logo.resize((lw, lh), Image.Resampling.LANCZOS)
-            # Canto inferior direito
             base.paste(logo, (w - lw - int(w*0.03), h - lh - int(w*0.03)), logo)
         except: pass
     return base.convert("RGB")
 
 def apply_video_watermark(v_bytes: bytes, plan: str) -> bytes:
     if plan in ["plus", "pro", "agency", "criação"]: return v_bytes
-    
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
         tmp.write(v_bytes)
         path = tmp.name
     out = path.replace(".mp4", "_wm.mp4")
     lp = Path(__file__).parent / "logo.png"
-    
     try:
         vid = VideoFileClip(path)
         if lp.exists():
-            logo = (ImageClip(str(lp)).set_duration(vid.duration)
-                    .resize(height=vid.h * 0.15).margin(right=8, bottom=8, opacity=0)
-                    .set_pos(("right", "bottom")))
+            logo = (ImageClip(str(lp)).set_duration(vid.duration).resize(height=vid.h * 0.15).margin(right=8, bottom=8, opacity=0).set_pos(("right", "bottom")))
             final = CompositeVideoClip([vid, logo])
             final.write_videofile(out, codec="libx264", audio_codec="aac", preset="ultrafast", threads=1, logger=None)
             vid.close(); final.close()
             with open(out, "rb") as f: return f.read()
         return v_bytes
-    except Exception as e:
-        print(f"Erro Video Watermark: {e}")
-        return v_bytes
+    except: return v_bytes
     finally:
-        try: 
-            if os.path.exists(path): os.remove(path)
-            if os.path.exists(out): os.remove(out)
+        try: os.remove(path); os.remove(out)
         except: pass
 
 @app.get("/")
-def read_root(): return {"status": "NastIA V6 (Fixes & Referrals) Online 🚀"}
+def read_root(): return {"status": "NastIA Final V7 Online 🚀"}
 
-# --- ROTA IMAGEM (Nano Banana) ---
+# --- ROTA IMAGEM (CORRIGIDA) ---
 @app.post("/generate-image")
 async def generate_image(
     prompt: str = Form(...), 
@@ -131,21 +114,22 @@ async def generate_image(
         user_plan = check_and_deduct_credits(user_id, cost)
         
         model = "gemini-2.5-flash-image"
-        contents = [prompt]
+        
+        # TRUQUE: Injetar o Aspect Ratio no prompt para evitar erro de validação do config
+        enhanced_prompt = f"{prompt}. Create this image with an aspect ratio of {aspect_ratio}."
+        
+        contents = [enhanced_prompt]
         if files:
             for file in files:
                 f_bytes = await file.read()
                 img = Image.open(io.BytesIO(f_bytes))
                 contents.append(img)
         
-        # Configuração correta para Nano Banana
+        # Configuração simplificada (sem aspect_ratio aqui para não dar erro)
         response = client.models.generate_content(
             model=model, 
             contents=contents, 
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-                aspect_ratio=aspect_ratio # Passa o formato
-            )
+            config=types.GenerateContentConfig(response_modalities=["IMAGE"])
         )
 
         if response.candidates and response.candidates[0].content.parts:
@@ -153,20 +137,17 @@ async def generate_image(
                 if part.inline_data:
                     gen_img = Image.open(io.BytesIO(part.inline_data.data))
                     final_img = apply_watermark(gen_img, user_plan)
-                    
                     buf = io.BytesIO()
                     final_img.save(buf, format="JPEG", quality=95)
                     public_url = upload_to_supabase(buf.getvalue(), "jpg", "image/jpeg")
                     save_to_history(user_id, "image", public_url, prompt)
-                    
                     return {"image": public_url}
-                    
-        raise HTTPException(500, "O Google não retornou imagem. Tente outro prompt.")
+        raise HTTPException(500, "Sem imagem.")
     except Exception as e:
         print(f"Erro Imagem: {e}")
         raise HTTPException(500, str(e))
 
-# --- ROTA VÍDEO (Veo) ---
+# --- ROTA VÍDEO (Mantida a logica correta do Veo que aceita aspect_ratio) ---
 @app.post("/generate-video")
 async def generate_video(
     prompt: str = Form(...), 
@@ -179,86 +160,37 @@ async def generate_video(
         user_plan = check_and_deduct_credits(user_id, cost)
         
         model = "veo-3.1-generate-preview"
-        # Configuração correta para Veo
         veo_params = {
             "model": model, 
             "prompt": prompt, 
             "config": types.GenerateVideosConfig(
                 number_of_videos=1,
-                aspect_ratio=aspect_ratio # Passa o formato
+                aspect_ratio=aspect_ratio 
             )
         }
-
         if file_start:
             s_bytes = await file_start.read()
             mime = file_start.content_type or "image/jpeg"
             veo_params["image"] = types.Image(image_bytes=s_bytes, mime_type=mime)
 
         operation = client.models.generate_videos(**veo_params)
-        
-        while not operation.done:
-            time.sleep(5)
-            operation = client.operations.get(operation)
+        while not operation.done: time.sleep(5); operation = client.operations.get(operation)
 
         res = operation.result
         if res and res.generated_videos:
             v_bytes = client.files.download(file=res.generated_videos[0].video)
             final_bytes = apply_video_watermark(v_bytes, user_plan)
-            
             public_url = upload_to_supabase(final_bytes, "mp4", "video/mp4")
             save_to_history(user_id, "video", public_url, prompt)
-            
             return {"video": public_url}
         
-        raise HTTPException(500, "O Google não retornou vídeo.")
+        raise HTTPException(500, "Sem vídeo.")
     except Exception as e:
         print(f"Erro Vídeo: {e}")
-        raise HTTPException(status_code=402 if "Saldo" in str(e) else 500, detail=str(e))
+        status = 402 if "Saldo" in str(e) else 500
+        raise HTTPException(status, str(e))
 
-# --- ROTA INDICAÇÃO (NOVA: 50 CRÉDITOS NO CADASTRO) ---
-class ReferralRequest(BaseModel):
-    user_id: str
-    referral_code: str
-
-@app.post("/track-referral")
-async def track_referral_endpoint(req: ReferralRequest):
-    try:
-        # 1. Verifica se o usuário já foi indicado ou já ganhou bônus
-        user_check = supabase.table("profiles").select("referred_by, signup_bonus_given").eq("id", req.user_id).execute()
-        if not user_check.data: return {"status": "error", "message": "User not found"}
-        
-        user_data = user_check.data[0]
-        
-        # Se já tem padrinho ou já ganhou bônus, ignora
-        if user_data.get('referred_by') or user_data.get('signup_bonus_given'):
-             return {"status": "ignored", "message": "Already referred"}
-
-        # 2. Busca o dono do código (Padrinho)
-        referrer = supabase.table("profiles").select("id, credits").eq("referral_code", req.referral_code).execute()
-        
-        if referrer.data:
-            ref_id = referrer.data[0]['id']
-            ref_credits = referrer.data[0]['credits']
-            
-            # 3. Dá 50 créditos para o Padrinho (Bônus de Cadastro)
-            supabase.table("profiles").update({"credits": ref_credits + 50}).eq("id", ref_id).execute()
-            
-            # 4. Registra no perfil do novo usuário quem indicou ele e marca que o bônus foi dado
-            supabase.table("profiles").update({
-                "referred_by": req.referral_code,
-                "signup_bonus_given": True 
-            }).eq("id", req.user_id).execute()
-            
-            print(f"Referral: 50 créditos para {ref_id} pela indicação de {req.user_id}")
-            return {"status": "success"}
-            
-        return {"status": "error", "message": "Invalid code"}
-
-    except Exception as e:
-        print(f"Referral Error: {e}")
-        return {"status": "error"}
-
-# --- ROTA CHAT ---
+# --- DEMAIS ROTAS (Chat, Cupom, Webhook) ---
 class ChatRequest(BaseModel): history: List[Dict[str, str]]; persona: str 
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
@@ -270,7 +202,6 @@ async def chat_endpoint(req: ChatRequest):
         return {"response": res.text or "..."}
     except Exception as e: raise HTTPException(500, str(e))
 
-# --- ROTA CUPOM ---
 class CouponRequest(BaseModel): user_id: str; code: str
 @app.post("/redeem-coupon")
 async def redeem_coupon_endpoint(req: CouponRequest):
@@ -281,52 +212,50 @@ async def redeem_coupon_endpoint(req: CouponRequest):
         if "200" in str(e): return {"message": "Sucesso!"}
         raise HTTPException(400, "Erro cupom")
 
-# --- WEBHOOK STRIPE (ATUALIZADO: 100 CRÉDITOS NA ASSINATURA) ---
+class ReferralRequest(BaseModel): user_id: str; referral_code: str
+@app.post("/track-referral")
+async def track_referral_endpoint(req: ReferralRequest):
+    try:
+        user_check = supabase.table("profiles").select("referred_by, signup_bonus_given").eq("id", req.user_id).execute()
+        if not user_check.data: return {"status": "error"}
+        user_data = user_check.data[0]
+        if user_data.get('referred_by') or user_data.get('signup_bonus_given'): return {"status": "ignored"}
+        referrer = supabase.table("profiles").select("id, credits").eq("referral_code", req.referral_code).execute()
+        if referrer.data:
+            ref_id = referrer.data[0]['id']
+            ref_credits = referrer.data[0]['credits']
+            supabase.table("profiles").update({"credits": ref_credits + 50}).eq("id", ref_id).execute()
+            supabase.table("profiles").update({"referred_by": req.referral_code, "signup_bonus_given": True}).eq("id", req.user_id).execute()
+            return {"status": "success"}
+        return {"status": "error"}
+    except: return {"status": "error"}
+
 @app.post("/webhook")
 async def stripe_webhook(request: Request):
     payload = await request.body()
     sig_header = request.headers.get('stripe-signature')
-
-    try:
-        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    try: event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
     except: raise HTTPException(400, "Webhook Error")
-
     if event['type'] == 'checkout.session.completed':
         session = event['data']['object']
         user_id = session.get('client_reference_id')
         amount = session.get('amount_total')
-        
         if user_id:
-            to_add = 0
-            new_plan = None
-            
-            # Tabela de Preços
-            if amount == 6900: # Plus
-                to_add = 500
-                new_plan = 'plus'
-            elif amount == 9900: # Pro/Pack
+            to_add = 0; new_plan = None
+            if amount == 6900: to_add = 500; new_plan = 'plus'
+            elif amount == 9900: 
                 to_add = 1000
                 if session.get('mode') == 'subscription': new_plan = 'pro'
-            
             try:
-                # 1. Entrega créditos ao comprador
                 curr = supabase.table("profiles").select("credits, referred_by").eq("id", user_id).execute()
                 u_data = curr.data[0]
                 data = {"credits": u_data['credits'] + to_add}
                 if new_plan: data["plan_tier"] = new_plan
                 supabase.table("profiles").update(data).eq("id", user_id).execute()
-                print(f"Pagamento OK para {user_id}")
-
-                # 2. Bônus de Assinatura para o Padrinho (+100 créditos)
-                referrer_code = u_data.get('referred_by')
-                if referrer_code and new_plan: # Só se assinou plano (não pack avulso)
-                    referrer = supabase.table("profiles").select("id, credits").eq("referral_code", referrer_code).execute()
+                ref_code = u_data.get('referred_by')
+                if ref_code and new_plan:
+                    referrer = supabase.table("profiles").select("id, credits").eq("referral_code", ref_code).execute()
                     if referrer.data:
-                        ref_id = referrer.data[0]['id']
-                        ref_creds = referrer.data[0]['credits']
-                        supabase.table("profiles").update({"credits": ref_creds + 100}).eq("id", ref_id).execute()
-                        print(f"Bônus de assinatura (+100) para {ref_id}")
-
-            except Exception as e: print(f"Erro DB Stripe: {e}")
-
+                        supabase.table("profiles").update({"credits": referrer.data[0]['credits'] + 100}).eq("id", referrer.data[0]['id']).execute()
+            except Exception as e: print(f"Stripe Error: {e}")
     return {"status": "success"}

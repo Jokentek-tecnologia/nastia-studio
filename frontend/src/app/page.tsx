@@ -20,8 +20,14 @@ const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
     loading: () => <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 text-white">Carregando Editor...</div>
 });
 
-const SHORT_ADS = ["https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"];
-const LONG_ADS = ["https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"];
+const SHORT_ADS = [
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+];
+const LONG_ADS = [
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"
+];
 
 export default function Home() {
     const [session, setSession] = useState<any>(null);
@@ -45,7 +51,6 @@ export default function Home() {
     const [history, setHistory] = useState<any[]>([]);
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isStoreOpen, setIsStoreOpen] = useState(false);
-    const [notifications, setNotifications] = useState<any[]>([]);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -113,7 +118,7 @@ export default function Home() {
         } else { if (imageFiles.length > 0) formData.append("file_start", imageFiles[0]); }
 
         try {
-            const endpoint = `${process.env.NEXT_PUBLIC_API_URL}/generate-${mode}`;
+            const endpoint = mode === "image" ? `${process.env.NEXT_PUBLIC_API_URL}/generate-image` : `${process.env.NEXT_PUBLIC_API_URL}/generate-video`;
             const res = await axios.post(endpoint, formData, { headers: { "Content-Type": "multipart/form-data" } });
             fetchProfile(session.user.id); fetchHistory(session.user.id);
             const url = res.data.image || res.data.video;
@@ -121,7 +126,6 @@ export default function Home() {
         } catch (error: any) { alert(error.response?.data?.detail || "Erro."); setLoading(false); if (mode === "image") setResultUrl(previousResult); }
     };
 
-    useEffect(() => { if (mode === "video" && pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } }, [pendingResult, mode]);
     const handleAdEnded = () => { if (mode === "image" && pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
     const handleSkipAd = () => { if (pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
     const copyReferral = () => { navigator.clipboard.writeText(`https://nastia.com.br?ref=${referralCode}`); alert("Copiado!"); }
@@ -138,12 +142,8 @@ export default function Home() {
     return (
         <main className="min-h-screen bg-[#050505] text-white flex flex-col font-sans relative overflow-x-hidden">
             <header className="w-full p-4 border-b border-gray-800 bg-black/50 backdrop-blur-md flex justify-between items-center sticky top-0 z-30">
-                <div className="flex items-center gap-3"><img src="/app-logo.png" alt="NastIA" className="h-10 w-auto object-contain" /><div className="hidden sm:block"><h1 className="font-bold text-lg leading-none">NastIA Studio</h1><p className="text-[10px] text-gray-500">Plataforma Criativa</p></div></div>
-                <div className="flex items-center gap-4">
-                    <div className="flex flex-col items-end cursor-pointer" onClick={() => setIsStoreOpen(true)}><div className="flex items-center gap-1.5 text-yellow-500 font-bold"><Coins className="w-4 h-4" /> <span>{credits}</span></div><div className="text-[10px] text-gray-500 bg-gray-900 px-2 rounded-full uppercase">{plan}</div></div>
-                    <img src={session.user.user_metadata.avatar_url} className="w-9 h-9 rounded-full border border-gray-700" />
-                    <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-red-500"><LogOut className="w-5 h-5" /></button>
-                </div>
+                <div className="flex items-center gap-3"><img src="/app-logo.png" className="h-10 w-auto object-contain" /><div className="hidden sm:block"><h1 className="font-bold text-lg leading-none">NastIA Studio</h1><p className="text-[10px] text-gray-500">Plataforma Criativa</p></div></div>
+                <div className="flex items-center gap-4"><div className="flex flex-col items-end cursor-pointer" onClick={() => setIsStoreOpen(true)}><div className="flex items-center gap-1.5 text-yellow-500 font-bold"><Coins className="w-4 h-4" /> <span>{credits}</span></div><div className="text-[10px] text-gray-500 bg-gray-900 px-2 rounded-full uppercase">{plan}</div></div><img src={session.user.user_metadata.avatar_url} className="w-9 h-9 rounded-full border border-gray-700" /><button onClick={handleLogout} className="p-2 hover:bg-red-900/20 text-gray-400 hover:text-red-500 rounded-lg"><LogOut className="w-5 h-5" /></button></div>
             </header>
 
             {isEditorOpen && resultUrl && <ImageEditor imageUrl={resultUrl} onClose={() => setIsEditorOpen(false)} />}
@@ -151,9 +151,12 @@ export default function Home() {
 
             {loading && (
                 <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center">
-                    {pendingResult && <button onClick={handleSkipAd} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-green-500 text-black px-8 py-4 rounded-full font-bold text-xl shadow-2xl animate-bounce flex items-center gap-2"><CheckCircle className="w-6 h-6" /> VER RESULTADO</button>}
+                    {pendingResult && <button onClick={handleSkipAd} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-green-500 text-black px-8 py-4 rounded-full font-bold text-xl shadow-2xl animate-bounce flex items-center gap-2"><CheckCircle className="w-6 h-6" /> VER RESULTADO AGORA</button>}
                     <div className="absolute top-8 right-8 flex items-center gap-2 text-yellow-500 animate-pulse z-20"><Sparkles className="w-5 h-5" /><span className="font-bold tracking-widest">{pendingResult ? "PRONTO!" : "CRIANDO..."}</span></div>
-                    {isMobile ? <div className="flex flex-col items-center gap-6 z-20"><div className="w-20 h-20 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin"></div><p className="text-gray-400 text-sm">Processando...</p></div> : <AdPlayer src={currentAdUrl} onEnded={handleAdEnded} />}
+
+                    {/* O ADPLAYER AGORA RODA SEMPRE (NÃO TEM IF ISMOBILE) */}
+                    <div className="w-full h-full absolute inset-0"><AdPlayer src={currentAdUrl} onEnded={handleAdEnded} /></div>
+
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} /></div>
                 </div>
             )}
@@ -162,7 +165,7 @@ export default function Home() {
                 <div className="flex w-full bg-gray-900 p-1.5 rounded-2xl border border-gray-800">
                     <button onClick={() => { setMode("image"); setImageFiles([]); }} className={`flex-1 py-3 rounded-xl flex gap-2 font-bold justify-center ${mode === "image" ? "bg-gray-800 text-white" : "text-gray-500"}`}><ImageIcon className="w-5 h-5" /> Imagem</button>
                     <button onClick={() => { setMode("video"); setImageFiles([]); }} className={`flex-1 py-3 rounded-xl flex gap-2 font-bold justify-center ${mode === "video" ? "bg-blue-900/30 text-blue-200" : "text-gray-500"}`}><VideoIcon className="w-5 h-5" /> Vídeo</button>
-                    <button onClick={() => setMode("gallery")} className={`flex-1 py-3 rounded-xl flex gap-2 font-bold justify-center ${mode === "gallery" ? "bg-yellow-900/30 text-yellow-200" : "text-gray-500"}`}><Clock className="w-5 h-5" /> Galeria</button>
+                    <button onClick={() => { setMode("gallery"); }} className={`flex-1 py-3 rounded-xl flex gap-2 font-bold justify-center ${mode === "gallery" ? "bg-yellow-900/30 text-yellow-200" : "text-gray-500"}`}><Clock className="w-5 h-5" /> Galeria</button>
                 </div>
 
                 {mode !== "gallery" && (
@@ -171,24 +174,19 @@ export default function Home() {
                             <button onClick={() => setAspectRatio("16:9")} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold border ${aspectRatio === "16:9" ? "bg-white text-black" : "text-gray-500 border-gray-700"}`}><RectangleHorizontal className="w-4 h-4" /> 16:9</button>
                             <button onClick={() => setAspectRatio("9:16")} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold border ${aspectRatio === "9:16" ? "bg-white text-black" : "text-gray-500 border-gray-700"}`}><RectangleVertical className="w-4 h-4" /> 9:16</button>
                         </div>
-
                         <div className="flex flex-wrap gap-3 mb-4">
                             {imageFiles.map((file, i) => <div key={i} className="relative w-20 h-20 bg-gray-800 rounded-xl overflow-hidden"><img src={URL.createObjectURL(file)} className="w-full h-full object-cover" /><button onClick={() => removeImage(i)} className="absolute top-0 right-0 bg-black text-white p-1"><XCircle className="w-4 h-4" /></button></div>)}
                             <button onClick={() => fileInputRef.current?.click()} className="w-20 h-20 border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center text-gray-500"><Plus className="w-6 h-6" /><span className="text-[9px]">Add</span></button>
                             <input type="file" ref={fileInputRef} onChange={handleImageSelect} className="hidden" accept="image/*" multiple={mode === "image"} />
                         </div>
-
                         <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Descreva sua criação..." className="w-full bg-[#18181b] border border-gray-700 rounded-xl p-4 text-gray-200 h-32 mb-4" />
-
-                        <button onClick={handleGenerate} disabled={loading || !prompt || credits < currentCost} className="w-full py-4 rounded-xl font-bold text-lg bg-white text-black hover:bg-gray-200 flex justify-center gap-2 disabled:bg-gray-800 disabled:text-gray-500">
-                            {loading ? "Processando..." : `Gerar (-${currentCost})`}
-                        </button>
-
+                        <button onClick={handleGenerate} disabled={loading || !prompt || credits < currentCost} className="w-full py-4 rounded-xl font-bold text-lg bg-white text-black hover:bg-gray-200 flex justify-center gap-2 disabled:bg-gray-800 disabled:text-gray-500">{loading ? "Processando..." : `Gerar (-${currentCost})`}</button>
                         {resultUrl && !loading && (
                             <div className="mt-6 rounded-xl overflow-hidden border border-gray-800 bg-black/50 relative">
                                 <div className="absolute top-4 right-4 flex gap-2 z-10">
                                     {mode === "image" && <button onClick={() => handleTransformToVideo(null)} className="p-2 bg-blue-600 text-white rounded-lg"><ArrowRightCircle className="w-4 h-4" /></button>}
                                     {!isMobile && mode === "image" && <button onClick={() => setIsEditorOpen(true)} className="p-2 bg-yellow-500 text-black rounded-lg"><Edit className="w-4 h-4" /></button>}
+                                    <button onClick={() => handleShare(resultUrl, mode)} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white"><Share2 className="w-4 h-4" /></button>
                                     <button onClick={() => handleDownload(resultUrl, mode)} className="p-2 bg-white text-black rounded-lg"><Download className="w-4 h-4" /></button>
                                 </div>
                                 {mode === "image" ? <img src={resultUrl} className="w-full max-h-[500px] object-contain" /> : <video src={resultUrl} controls className="w-full max-h-[500px]" />}
@@ -210,6 +208,7 @@ export default function Home() {
                     </div>
                 )}
             </div>
+            <footer className="w-full py-8 mt-10 border-t border-gray-900 bg-black/80 text-center text-gray-600 text-sm"><p>© 2025 NastIA Studio.</p></footer>
             <ChatWidget onApplyPrompt={(text) => { setPrompt(text); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
         </main>
     );
