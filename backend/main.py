@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Request
 from google import genai
 from google.genai import types
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,30 +11,43 @@ from PIL import Image, ImageDraw, ImageFont
 import time
 import tempfile
 from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip
-from typing import List
+import traceback
+from typing import List, Dict, Optional
 from supabase import create_client, Client
-from fastapi import Request # Importe Request também
+from pydantic import BaseModel # <--- O QUE FALTOU ANTES
 import stripe
 
-if not hasattr(Image, 'ANTIALIAS'): Image.ANTIALIAS = Image.Resampling.LANCZOS
+# Patch para Pillow/MoviePy
+if not hasattr(Image, 'ANTIALIAS'):
+    Image.ANTIALIAS = Image.Resampling.LANCZOS
 
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
+# --- CONFIGURAÇÕES ---
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 api_key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key)
 
-app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+STRIPE_API_KEY = os.getenv("STRIPE_API_KEY")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+stripe.api_key = STRIPE_API_KEY
 
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
+)
+
+# --- FUNÇÕES AUXILIARES ---
 def check_and_deduct_credits(user_id: str, cost: int):
     response = supabase.table("profiles").select("credits, plan_tier").eq("id", user_id).execute()
     if not response.data: raise Exception("Usuário não encontrado.")
     user = response.data[0]
-    if user["credits"] < cost: raise Exception(f"Saldo insuficiente.")
+    if user["credits"] < cost:
+        raise Exception(f"Saldo insuficiente. Necessário: {cost}. Atual: {user['credits']}")
     supabase.table("profiles").update({"credits": user["credits"] - cost}).eq("id", user_id).execute()
     return user["plan_tier"]
 
@@ -60,6 +73,11 @@ def apply_watermark(img: Image.Image, plan: str) -> Image.Image:
             logo = logo.resize((lw, lh), Image.Resampling.LANCZOS)
             base.paste(logo, (w - lw - int(w*0.03), h - lh - int(w*0.03)), logo)
         except: pass
+    else:
+        d = ImageDraw.Draw(base)
+        try: f = ImageFont.truetype("arial.ttf", 30)
+        except: f = ImageFont.load_default()
+        d.text((w-200, h-40), "NastIA Studio", fill="white", font=f)
     return base.convert("RGB")
 
 def apply_video_watermark(v_bytes: bytes, plan: str) -> bytes:
@@ -72,7 +90,9 @@ def apply_video_watermark(v_bytes: bytes, plan: str) -> bytes:
     try:
         vid = VideoFileClip(path)
         if lp.exists():
-            logo = (ImageClip(str(lp)).set_duration(vid.duration).resize(height=vid.h * 0.15).margin(right=8, bottom=8, opacity=0).set_pos(("right", "bottom")))
+            logo = (ImageClip(str(lp)).set_duration(vid.duration)
+                    .resize(height=vid.h * 0.15).margin(right=8, bottom=8, opacity=0)
+                    .set_pos(("right", "bottom")))
             final = CompositeVideoClip([vid, logo])
             final.write_videofile(out, codec="libx264", audio_codec="aac", preset="ultrafast", threads=1, logger=None)
             vid.close(); final.close()
@@ -80,11 +100,13 @@ def apply_video_watermark(v_bytes: bytes, plan: str) -> bytes:
         return v_bytes
     except: return v_bytes
     finally:
-        try: os.remove(path); os.remove(out)
+        try: 
+            if os.path.exists(path): os.remove(path)
+            if os.path.exists(out): os.remove(out)
         except: pass
 
 @app.get("/")
-def read_root(): return {"status": "NastIA V5 (Aspect Ratio) Online 🚀"}
+def read_root(): return {"status": "NastIA V3 Final Online 🚀"}
 
 # --- ROTA IMAGEM ---
 @app.post("/generate-image")
@@ -92,7 +114,7 @@ async def generate_image(
     prompt: str = Form(...), 
     files: List[UploadFile] = File(None), 
     user_id: str = Form(...),
-    aspect_ratio: str = Form("16:9") # Padrão
+    aspect_ratio: str = Form("16:9")
 ):
     try:
         num_files = len(files) if files else 0
@@ -107,14 +129,9 @@ async def generate_image(
                 img = Image.open(io.BytesIO(f_bytes))
                 contents.append(img)
         
-        # Configuração de Aspect Ratio para Imagem
         response = client.models.generate_content(
-            model=model, 
-            contents=contents, 
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-                aspect_ratio=aspect_ratio # Passa o formato (ex: "16:9" ou "9:16")
-            )
+            model=model, contents=contents, 
+            config=types.GenerateContentConfig(response_modalities=["IMAGE"], aspect_ratio=aspect_ratio)
         )
 
         if response.candidates and response.candidates[0].content.parts:
@@ -136,21 +153,15 @@ async def generate_video(
     prompt: str = Form(...), 
     file_start: UploadFile = File(None), 
     user_id: str = Form(...),
-    aspect_ratio: str = Form("16:9") # Padrão
+    aspect_ratio: str = Form("16:9")
 ):
     try:
         cost = 20
         user_plan = check_and_deduct_credits(user_id, cost)
         
         model = "veo-3.1-generate-preview"
-        veo_params = {
-            "model": model, 
-            "prompt": prompt, 
-            "config": types.GenerateVideosConfig(
-                number_of_videos=1,
-                aspect_ratio=aspect_ratio # Passa o formato para o Veo
-            )
-        }
+        veo_params = {"model": model, "prompt": prompt, "config": types.GenerateVideosConfig(number_of_videos=1, aspect_ratio=aspect_ratio)}
+
         if file_start:
             s_bytes = await file_start.read()
             mime = file_start.content_type or "image/jpeg"
@@ -170,18 +181,26 @@ async def generate_video(
         raise HTTPException(500, "Sem vídeo.")
     except Exception as e: print(e); raise HTTPException(500, str(e))
 
-# ... (Rotas de Chat e Cupom continuam iguais) ...
-class ChatRequest(BaseModel): history: List[Dict[str, str]]; persona: str 
+# --- ROTA CHAT ---
+class ChatRequest(BaseModel): 
+    history: List[Dict[str, str]] 
+    persona: str 
+
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
     try:
         model = "gemini-3-pro-preview"
-        sys_inst = "Se for pedir imagem use 'PROMPT: '. " + req.persona
+        sys_inst = "Se for pedir imagem use 'PROMPT: '. "
+        if req.persona == "criativo": sys_inst += "Você é Diretor de Arte."
+        elif req.persona == "trafego": sys_inst += "Você é Gestor de Tráfego."
+        elif req.persona == "copy": sys_inst += "Você é Copywriter."
+        
         fmt_contents = [types.Content(role=m["role"], parts=[types.Part.from_text(text=m["parts"])]) for m in req.history]
         res = client.models.generate_content(model=model, contents=fmt_contents, config=types.GenerateContentConfig(system_instruction=sys_inst))
         return {"response": res.text or "..."}
     except Exception as e: raise HTTPException(500, str(e))
 
+# --- ROTA CUPOM ---
 class CouponRequest(BaseModel): user_id: str; code: str
 @app.post("/redeem-coupon")
 async def redeem_coupon_endpoint(req: CouponRequest):
@@ -192,64 +211,45 @@ async def redeem_coupon_endpoint(req: CouponRequest):
         if "200" in str(e): return {"message": "Sucesso!"}
         raise HTTPException(400, "Erro cupom")
 
-        # CONFIGURAÇÃO STRIPE
-STRIPE_API_KEY = os.getenv("STRIPE_API_KEY") # Vamos colocar no .env depois
-STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET") # Vamos pegar no painel do Stripe
-stripe.api_key = STRIPE_API_KEY
-
+# --- WEBHOOK STRIPE (PAGAMENTO AUTOMÁTICO) ---
 @app.post("/webhook")
 async def stripe_webhook(request: Request):
     payload = await request.body()
     sig_header = request.headers.get('stripe-signature')
 
     try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, STRIPE_WEBHOOK_SECRET
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail="Invalid payload")
-    except stripe.error.SignatureVerificationError as e:
-        raise HTTPException(status_code=400, detail="Invalid signature")
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro Webhook: {e}")
 
-    # EVENTO: Pagamento Aprovado
     if event['type'] == 'checkout.session.completed':
         session = event['data']['object']
-        
-        # 1. Quem pagou? (Vem do ?client_reference_id=... que colocamos no frontend)
         user_id = session.get('client_reference_id')
-        
-        # 2. Quanto pagou? (Em centavos. Ex: 6900 = R$ 69,00)
-        amount_paid = session.get('amount_total')
+        amount = session.get('amount_total')
         
         if user_id:
-            print(f"Pagamento recebido de {user_id}. Valor: {amount_paid}")
-            
-            # LÓGICA DE ATRIBUIÇÃO (Simples, baseada no valor)
-            credits_to_add = 0
+            to_add = 0
             new_plan = None
             
-            if amount_paid == 6900: # R$ 69,00 (Plus)
-                credits_to_add = 500
+            # Ajuste esses valores conforme seus preços em centavos
+            # Ex: 6900 = R$ 69,00
+            if amount == 6900: 
+                to_add = 500
                 new_plan = 'plus'
-            elif amount_paid == 9900: # R$ 99,00 (Pro ou Pack)
-                # Como distinguir? Vamos assumir que 99 é PRO por enquanto.
-                # Ou se quiser ser generoso, dê 1000 créditos e vire Pro.
-                credits_to_add = 1000
-                new_plan = 'pro'
+            elif amount == 9900: 
+                to_add = 1000 # Pode ser o Pack ou o Pro
+                # Se for recorrente (subscription), é Pro. Se for one-time, é pack.
+                if session.get('mode') == 'subscription':
+                    new_plan = 'pro'
+                # Se for pack, não muda o plano, só dá créditos
             
-            # Atualiza no Supabase
             try:
-                # Pega saldo atual
-                current = supabase.table("profiles").select("credits").eq("id", user_id).execute()
-                current_credits = current.data[0]['credits']
-                
-                update_data = {"credits": current_credits + credits_to_add}
-                if new_plan:
-                    update_data["plan_tier"] = new_plan
-                
-                supabase.table("profiles").update(update_data).eq("id", user_id).execute()
-                print("Créditos entregues com sucesso!")
-            except Exception as db_err:
-                print(f"Erro ao entregar créditos: {db_err}")
+                curr = supabase.table("profiles").select("credits").eq("id", user_id).execute()
+                curr_cred = curr.data[0]['credits']
+                data = {"credits": curr_cred + to_add}
+                if new_plan: data["plan_tier"] = new_plan
+                supabase.table("profiles").update(data).eq("id", user_id).execute()
+            except Exception as e:
+                print(f"Erro DB Stripe: {e}")
 
     return {"status": "success"}
