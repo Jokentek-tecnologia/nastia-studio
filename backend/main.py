@@ -98,9 +98,9 @@ def apply_video_watermark(v_bytes: bytes, plan: str) -> bytes:
         except: pass
 
 @app.get("/")
-def read_root(): return {"status": "NastIA Final V7 Online 🚀"}
+def read_root(): return {"status": "NastIA V8 (Image Config Fix) Online 🚀"}
 
-# --- ROTA IMAGEM (CORRIGIDA) ---
+# --- ROTA IMAGEM (CORRIGIDA COM DOCUMENTAÇÃO OFICIAL) ---
 @app.post("/generate-image")
 async def generate_image(
     prompt: str = Form(...), 
@@ -115,21 +115,25 @@ async def generate_image(
         
         model = "gemini-2.5-flash-image"
         
-        # TRUQUE: Injetar o Aspect Ratio no prompt para evitar erro de validação do config
-        enhanced_prompt = f"{prompt}. Create this image with an aspect ratio of {aspect_ratio}."
+        contents = [types.Content(role="user", parts=[types.Part.from_text(text=prompt)])]
         
-        contents = [enhanced_prompt]
         if files:
             for file in files:
                 f_bytes = await file.read()
                 img = Image.open(io.BytesIO(f_bytes))
-                contents.append(img)
+                # Adiciona imagem como Part
+                contents[0].parts.append(types.Part.from_image(img))
         
-        # Configuração simplificada (sem aspect_ratio aqui para não dar erro)
+        # APLICAÇÃO DA ESTRUTURA CORRETA DE CONFIG
         response = client.models.generate_content(
             model=model, 
             contents=contents, 
-            config=types.GenerateContentConfig(response_modalities=["IMAGE"])
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(
+                    aspect_ratio=aspect_ratio # Agora dentro de image_config
+                )
+            )
         )
 
         if response.candidates and response.candidates[0].content.parts:
@@ -147,7 +151,7 @@ async def generate_image(
         print(f"Erro Imagem: {e}")
         raise HTTPException(500, str(e))
 
-# --- ROTA VÍDEO (Mantida a logica correta do Veo que aceita aspect_ratio) ---
+# --- ROTA VÍDEO ---
 @app.post("/generate-video")
 async def generate_video(
     prompt: str = Form(...), 
@@ -158,8 +162,8 @@ async def generate_video(
     try:
         cost = 20
         user_plan = check_and_deduct_credits(user_id, cost)
-        
         model = "veo-3.1-generate-preview"
+        
         veo_params = {
             "model": model, 
             "prompt": prompt, 
@@ -190,7 +194,7 @@ async def generate_video(
         status = 402 if "Saldo" in str(e) else 500
         raise HTTPException(status, str(e))
 
-# --- DEMAIS ROTAS (Chat, Cupom, Webhook) ---
+# --- ROTAS AUXILIARES ---
 class ChatRequest(BaseModel): history: List[Dict[str, str]]; persona: str 
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
