@@ -2,10 +2,9 @@
 
 import React, { useState } from "react";
 import axios from "axios";
-import { X, Check, CreditCard, Gift, Share2, Copy, Loader2, Crown, Zap } from "lucide-react";
+import { X, Check, CreditCard, Gift, Share2, Copy, Loader2, Crown, Zap, Link as LinkIcon } from "lucide-react";
 
-// LINKS BASE (Sem ID)
-const BASE_LINKS: Record<string, string> = {
+const LINKS: Record<string, string> = {
     plus: "https://buy.stripe.com/dRm9ANcPqgrLbHa6Z6awo00",
     pro: "https://buy.stripe.com/28E7sFg1Ca3n8uYdnuawo02",
     pack600: "https://buy.stripe.com/3cI4gtaHiejD8uYgzGawo01"
@@ -45,36 +44,57 @@ export default function StoreModal({ userId, currentPlan, referralCode, onClose,
         } finally { setLoading(false); }
     };
 
-    const copyLink = () => { navigator.clipboard.writeText(`https://nastia.com.br?ref=${referralCode}`); alert("Link copiado!"); };
+    // GERA O LINK DIRETO PARA COMPARTILHAR
+    const copyLink = () => {
+        const link = `https://studio.nastia.com.br/?ref=${referralCode}`;
+        navigator.clipboard.writeText(link);
+        alert("Link de convite copiado! Envie para seus amigos.");
+    };
 
-    // Helper para gerar o link correto com o ID do usuário
     const getPaymentLink = (productId: string) => {
-        const base = BASE_LINKS[productId];
+        const base = LINKS[productId];
         if (!base) return "#";
-        // O Stripe usa o parâmetro client_reference_id para rastrear quem pagou
         return `${base}?client_reference_id=${userId}`;
     };
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 animate-in fade-in zoom-in duration-300 font-sans">
-            <div className="w-full max-w-5xl bg-[#18181b] rounded-2xl border border-gray-700 shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh]">
-                <div className="w-full md:w-64 bg-[#202022] p-6 border-b md:border-r border-gray-700 flex flex-col gap-2">
-                    <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2"><Crown className="w-5 h-5 text-yellow-500" /> Premium</h2>
-                    <button onClick={() => setActiveTab("plans")} className={`p-3 rounded-xl text-left text-sm font-medium transition-colors flex items-center gap-3 ${activeTab === "plans" ? "bg-yellow-600 text-white" : "text-gray-400 hover:bg-gray-700 hover:text-white"}`}><CreditCard className="w-4 h-4" /> Comprar Créditos</button>
+        <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-2 sm:p-4 animate-in fade-in zoom-in duration-300 font-sans overflow-y-auto">
+            {/* Container Responsivo: Vira coluna no celular */}
+            <div className="w-full max-w-5xl bg-[#18181b] rounded-2xl border border-gray-700 shadow-2xl flex flex-col md:flex-row min-h-[80vh] md:max-h-[90vh]">
+
+                {/* SIDEBAR (Topo no mobile, lado no desktop) */}
+                <div className="w-full md:w-72 bg-[#202022] p-6 border-b md:border-r border-gray-700 flex flex-col gap-2 shrink-0">
+                    <div className="flex justify-between items-center md:block mb-4">
+                        <h2 className="text-xl font-bold text-white flex items-center gap-2"><Crown className="w-5 h-5 text-yellow-500" /> Premium</h2>
+                        <button onClick={onClose} className="md:hidden p-2 text-gray-400"><X className="w-6 h-6" /></button>
+                    </div>
+
+                    <button onClick={() => setActiveTab("plans")} className={`p-3 rounded-xl text-left text-sm font-medium transition-colors flex items-center gap-3 ${activeTab === "plans" ? "bg-yellow-600 text-white" : "text-gray-400 hover:bg-gray-700 hover:text-white"}`}><CreditCard className="w-4 h-4" /> Planos & Preços</button>
                     <button onClick={() => setActiveTab("coupon")} className={`p-3 rounded-xl text-left text-sm font-medium transition-colors flex items-center gap-3 ${activeTab === "coupon" ? "bg-yellow-600 text-white" : "text-gray-400 hover:bg-gray-700 hover:text-white"}`}><Gift className="w-4 h-4" /> Resgatar Código</button>
-                    <div className="flex-1"></div>
+
+                    <div className="hidden md:block flex-1"></div>
+
+                    {/* CARD DE INDICAÇÃO MELHORADO */}
                     <div className="bg-blue-900/20 border border-blue-500/30 p-4 rounded-xl mt-4">
                         <h3 className="text-blue-400 text-xs font-bold mb-2 flex items-center gap-1"><Share2 className="w-3 h-3" /> INDIQUE E GANHE</h3>
-                        <div onClick={copyLink} className="bg-black/40 p-2 rounded border border-gray-600 text-xs text-white font-mono flex justify-between items-center cursor-pointer hover:border-white"><span className="truncate">{referralCode}</span><Copy className="w-3 h-3" /></div>
+                        <p className="text-gray-400 text-[10px] mb-3 leading-relaxed">
+                            Envie seu link. Seu amigo ganha 50 créditos ao entrar e você ganha 100 se ele assinar!
+                        </p>
+                        <button onClick={copyLink} className="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-2 transition-colors">
+                            <LinkIcon className="w-3 h-3" /> Copiar Link de Convite
+                        </button>
                     </div>
                 </div>
-                <div className="flex-1 p-8 overflow-y-auto bg-[#18181b]">
-                    <div className="flex justify-between items-center mb-6">
+
+                {/* CONTEÚDO */}
+                <div className="flex-1 p-4 md:p-8 overflow-y-auto bg-[#18181b]">
+                    <div className="hidden md:flex justify-between items-center mb-6">
                         <h2 className="text-2xl font-bold text-white">{activeTab === "plans" ? "Escolha sua opção" : "Área de Cupons"}</h2>
                         <button onClick={onClose} className="p-2 hover:bg-gray-800 rounded-full text-gray-400"><X className="w-6 h-6" /></button>
                     </div>
+
                     {activeTab === "plans" && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4 pb-10">
                             {PRODUCTS.map((prod) => (
                                 <div key={prod.id} className={`p-5 rounded-xl border relative flex flex-col ${currentPlan === prod.id ? "border-yellow-500 bg-yellow-500/5" : prod.type === 'pack' ? "border-blue-500/30 bg-blue-900/10" : "border-gray-700 bg-[#202022]"}`}>
                                     {currentPlan === prod.id && <span className="absolute top-3 right-3 text-[10px] bg-yellow-500 text-black px-2 py-0.5 rounded-full font-bold">ATUAL</span>}
@@ -94,12 +114,17 @@ export default function StoreModal({ userId, currentPlan, referralCode, onClose,
                         </div>
                     )}
                     {activeTab === "coupon" && (
-                        <div className="flex gap-2">
-                            <input type="text" value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} placeholder="EX: BETA1000" className="flex-1 bg-[#27272a] border border-gray-600 rounded-lg px-4 py-3 text-white outline-none uppercase" />
-                            <button onClick={handleRedeem} disabled={loading || !couponCode} className="bg-yellow-600 hover:bg-yellow-500 text-black font-bold px-6 rounded-lg">{loading ? <Loader2 className="animate-spin" /> : "Resgatar"}</button>
+                        <div className="max-w-md mx-auto mt-10 text-center pb-10">
+                            <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-yellow-500"><Gift className="w-8 h-8" /></div>
+                            <h3 className="text-xl font-bold text-white mb-2">Tem um código promocional?</h3>
+                            <p className="text-gray-400 text-sm mb-6">Digite abaixo para adicionar créditos à sua conta.</p>
+                            <div className="flex flex-col sm:flex-row gap-2">
+                                <input type="text" value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} placeholder="EX: BETA1000" className="flex-1 bg-[#27272a] border border-gray-600 rounded-lg px-4 py-3 text-white outline-none uppercase" />
+                                <button onClick={handleRedeem} disabled={loading || !couponCode} className="bg-yellow-600 hover:bg-yellow-500 text-black font-bold px-6 py-3 rounded-lg">{loading ? <Loader2 className="animate-spin" /> : "Resgatar"}</button>
+                            </div>
+                            {message && <div className={`mt-4 p-3 rounded-lg text-sm text-center ${message.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{message.text}</div>}
                         </div>
                     )}
-                    {message && <div className={`mt-4 p-3 rounded-lg text-sm text-center ${message.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{message.text}</div>}
                 </div>
             </div>
         </div>
