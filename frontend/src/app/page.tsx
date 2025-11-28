@@ -3,10 +3,10 @@
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import {
-    Sparkles, Image as ImageIcon, Upload, X, Video as VideoIcon,
-    Film, XCircle, Edit, LogOut, User, Coins, Crown, Gift,
+    Sparkles, Image as ImageIcon, Video as VideoIcon,
+    Film, XCircle, Edit, LogOut, Coins, Gift,
     Share2, Download, Instagram, Globe, MessageCircle, Plus, Copy,
-    ArrowRightCircle, Layers, Clock, Smartphone, CheckCircle
+    ArrowRightCircle, Layers, Clock, CheckCircle
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { supabase } from "../lib/supabase";
@@ -15,12 +15,12 @@ import ChatWidget from "../components/ChatWidget";
 import StoreModal from "../components/StoreModal";
 import AdPlayer from "../components/AdPlayer";
 
+// Carregamento dinâmico do editor para evitar erro de 'window not defined' no mobile
 const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
     ssr: false,
     loading: () => <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 text-white">Carregando Editor...</div>
 });
 
-// LISTA DE VÍDEOS (Certifique-se que esses links funcionam e são rápidos)
 const SHORT_ADS = [
     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
@@ -31,17 +31,19 @@ const LONG_ADS = [
 ];
 
 export default function Home() {
+    // Auth & Profile
     const [session, setSession] = useState<any>(null);
     const [credits, setCredits] = useState<number>(0);
     const [plan, setPlan] = useState<string>("free");
     const [referralCode, setReferralCode] = useState<string>("");
     const [authLoading, setAuthLoading] = useState(true);
 
+    // App State
     const [mode, setMode] = useState<"image" | "video" | "gallery">("image");
     const [prompt, setPrompt] = useState("");
     const [imageFiles, setImageFiles] = useState<File[]>([]);
+    // Removi isMobile pois não estamos mais usando para esconder componentes
 
-    // REMOVI O 'isMobile' DAQUI POIS VAMOS FORÇAR O VÍDEO SEMPRE
     const [resultUrl, setResultUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [currentAdUrl, setCurrentAdUrl] = useState("");
@@ -64,19 +66,30 @@ export default function Home() {
     };
 
     const fetchHistory = async (userId: string) => {
-        const { data } = await supabase.from('generations').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(20);
+        const { data } = await supabase
+            .from('generations')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(20);
         if (data) setHistory(data);
     };
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session);
-            if (session) { fetchProfile(session.user.id); fetchHistory(session.user.id); }
+            if (session) {
+                fetchProfile(session.user.id);
+                fetchHistory(session.user.id);
+            }
             setAuthLoading(false);
         });
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
             setSession(session);
-            if (session) { fetchProfile(session.user.id); fetchHistory(session.user.id); } else setAuthLoading(false);
+            if (session) {
+                fetchProfile(session.user.id);
+                fetchHistory(session.user.id);
+            } else setAuthLoading(false);
         });
         return () => subscription.unsubscribe();
     }, []);
@@ -91,18 +104,28 @@ export default function Home() {
         }
     };
 
-    const removeImage = (index: number) => { setImageFiles(prev => prev.filter((_, i) => i !== index)); };
-    const handleClearAll = () => { setResultUrl(null); setImageFiles([]); setPrompt(""); };
+    const removeImage = (index: number) => {
+        setImageFiles(prev => prev.filter((_, i) => i !== index));
+    };
 
-    const handleTransformToVideo = async () => {
-        if (!resultUrl) return;
+    const handleClearAll = () => {
+        setResultUrl(null);
+        setImageFiles([]);
+        setPrompt("");
+    };
+
+    const handleTransformToVideo = async (targetUrl: string | null) => {
+        const urlToUse = targetUrl || resultUrl;
+        if (!urlToUse) return;
         try {
-            const res = await fetch(resultUrl);
+            const res = await fetch(urlToUse);
             const blob = await res.blob();
             const file = new File([blob], "generated_base.jpg", { type: "image/jpeg" });
             setMode("video"); setImageFiles([file]); setResultUrl(null); setPrompt("");
             window.scrollTo({ top: 0, behavior: 'smooth' });
-        } catch (error) { console.error("Erro ao transformar:", error); }
+        } catch (error) {
+            console.error("Erro ao transformar:", error);
+        }
     };
 
     const prepareAd = () => {
@@ -113,12 +136,17 @@ export default function Home() {
 
     const handleGenerate = async () => {
         if (!prompt) return;
+
         const isEditingContext = mode === "image" && resultUrl && imageFiles.length === 0;
         let cost = 5;
         if (mode === "image" && (imageFiles.length > 1 || isEditingContext)) cost = 10;
         if (mode === "video") cost = 20;
 
-        if (credits < cost) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
+        if (credits < cost) {
+            alert(`Saldo insuficiente! Necessário: ${cost}. Abrindo loja...`);
+            setIsStoreOpen(true);
+            return;
+        }
 
         prepareAd();
         setLoading(true);
@@ -130,12 +158,17 @@ export default function Home() {
         const formData = new FormData();
         formData.append("user_id", session.user.id);
 
-        if (isEditingContext) formData.append("prompt", `INSTRUCTION: EDIT IMAGE. Change: ${prompt}`);
-        else formData.append("prompt", prompt);
+        if (isEditingContext) {
+            const engineeredPrompt = `INSTRUCTION: EDIT THE ATTACHED IMAGE. Keep the composition, lighting, and main subject exactly as they are. Only apply this specific change: ${prompt}`;
+            formData.append("prompt", engineeredPrompt);
+        } else {
+            formData.append("prompt", prompt);
+        }
 
         if (mode === "image") {
-            if (imageFiles.length > 0) imageFiles.forEach(file => formData.append("files", file));
-            else if (previousResult) {
+            if (imageFiles.length > 0) {
+                imageFiles.forEach(file => formData.append("files", file));
+            } else if (previousResult) {
                 try {
                     const res = await fetch(previousResult);
                     const blob = await res.blob();
@@ -158,29 +191,72 @@ export default function Home() {
             fetchHistory(session.user.id);
 
             const url = res.data.image || res.data.video;
-            if (mode === "video") { setResultUrl(url); setLoading(false); } else { setPendingResult(url); }
+            if (mode === "video") {
+                setResultUrl(url);
+                setLoading(false);
+            } else {
+                setPendingResult(url);
+            }
         } catch (error: any) {
-            console.error(error); alert(error.response?.data?.detail || "Erro ao gerar."); setLoading(false);
+            console.error(error);
+            alert(error.response?.data?.detail || "Erro ao gerar.");
+            setLoading(false);
             if (mode === "image") setResultUrl(previousResult);
         }
     };
 
-    // Sincronia de Anúncio
     useEffect(() => {
-        if (mode === "video" && pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); }
+        if (mode === "video" && pendingResult) {
+            setResultUrl(pendingResult);
+            setLoading(false);
+            setPendingResult(null);
+        }
     }, [pendingResult, mode]);
 
     const handleAdEnded = () => {
-        if (mode === "image" && pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); }
+        if (mode === "image" && pendingResult) {
+            setResultUrl(pendingResult);
+            setLoading(false);
+            setPendingResult(null);
+        }
     };
 
-    const handleSkipAd = () => { if (pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
+    const handleSkipAd = () => {
+        if (pendingResult) {
+            setResultUrl(pendingResult);
+            setLoading(false);
+            setPendingResult(null);
+        }
+    };
 
     const copyReferral = () => { navigator.clipboard.writeText(`https://nastia.com.br?ref=${referralCode}`); alert("Copiado!"); }
-    const handleDownload = (url: string, type: string) => { const link = document.createElement("a"); link.href = url; link.download = `NastIA-${Date.now()}.${type === 'image' ? 'jpg' : 'mp4'}`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
-    const handleShare = async (url: string, type: string) => { if (navigator.share) { try { const res = await fetch(url); const blob = await res.blob(); const file = new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type }); await navigator.share({ files: [file] }); } catch (e) { } } else alert("Use Baixar."); };
 
-    useEffect(() => { if (loading) { const i = setInterval(() => setAdProgress(o => (o < 95 ? o + 0.5 : o)), 100); return () => clearInterval(i); } }, [loading]);
+    const handleDownload = (url: string, type: string) => {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `NastIA-${Date.now()}.${type === 'image' ? 'jpg' : 'mp4'}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleShare = async (url: string, type: string) => {
+        if (navigator.share) {
+            try {
+                const res = await fetch(url);
+                const blob = await res.blob();
+                const file = new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type });
+                await navigator.share({ files: [file] });
+            } catch (e) { }
+        } else alert("Use Baixar.");
+    };
+
+    useEffect(() => {
+        if (loading) {
+            const i = setInterval(() => setAdProgress(o => (o < 95 ? o + 0.5 : o)), 100);
+            return () => clearInterval(i);
+        }
+    }, [loading]);
 
     if (authLoading) return <div className="min-h-screen bg-black flex items-center justify-center text-white"><div className="animate-spin w-8 h-8 border-4 border-yellow-500 border-t-transparent rounded-full"></div></div>;
     if (!session) return <Login />;
@@ -212,23 +288,18 @@ export default function Home() {
             {isEditorOpen && resultUrl && <ImageEditor imageUrl={resultUrl} onClose={() => setIsEditorOpen(false)} />}
             {isStoreOpen && <StoreModal userId={session.user.id} currentPlan={plan} referralCode={referralCode} onClose={() => setIsStoreOpen(false)} onUpdate={() => fetchProfile(session.user.id)} />}
 
-            {/* TELA DE ESPERA COM ADPLAYER SEMPRE ATIVO (DESKTOP E MOBILE) */}
             {loading && (
                 <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center">
-
-                    {/* Botão de Escape caso o usuário não queira esperar */}
                     {pendingResult && (
                         <button onClick={handleSkipAd} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-green-500 text-black px-8 py-4 rounded-full font-bold text-xl shadow-2xl animate-bounce flex items-center gap-2 hover:bg-green-400 transition-all cursor-pointer">
                             <CheckCircle className="w-6 h-6" /> VER RESULTADO AGORA
                         </button>
                     )}
-
                     <div className="absolute top-8 right-8 flex items-center gap-2 text-yellow-500 animate-pulse z-20">
                         <Sparkles className="w-5 h-5" />
                         <span className="font-bold tracking-widest">{pendingResult ? "PRONTO!" : "CRIANDO..."}</span>
                     </div>
 
-                    {/* O AdPlayer agora roda sempre. Ele tem lógica interna para lidar com bloqueio mobile */}
                     <div className="w-full h-full absolute inset-0">
                         <AdPlayer src={currentAdUrl} onEnded={handleAdEnded} />
                     </div>
@@ -237,8 +308,8 @@ export default function Home() {
                 </div>
             )}
 
-            {/* ... CONTEÚDO PRINCIPAL (Igual ao anterior) ... */}
             <div className="flex-1 flex flex-col items-center justify-center p-4 py-10 w-full max-w-5xl mx-auto space-y-8">
+
                 <div className="flex w-full bg-gray-900 p-1.5 rounded-2xl border border-gray-800">
                     <button onClick={() => { setMode("image"); setImageFiles([]); }} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "image" ? "bg-gray-800 text-white shadow-lg border border-gray-700" : "text-gray-500 hover:text-gray-300"}`}><ImageIcon className="w-5 h-5" /> Imagem</button>
                     <button onClick={() => { setMode("video"); setImageFiles([]); }} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "video" ? "bg-blue-900/30 text-blue-200 shadow-lg border border-blue-800/50" : "text-gray-500 hover:text-gray-300"}`}><VideoIcon className="w-5 h-5" /> Vídeo</button>
@@ -283,12 +354,7 @@ export default function Home() {
                                     <h3 className="text-gray-400 flex items-center gap-2 font-medium"><Sparkles className="w-4 h-4 text-green-500" /> Resultado Pronto</h3>
                                     <div className="flex flex-wrap gap-2">
                                         {mode === "image" && <button onClick={() => handleTransformToVideo(null)} className="flex items-center gap-1.5 bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-blue-500/20"><ArrowRightCircle className="w-3 h-3" /> Animar</button>}
-
-                                        {/* EDITOR VISÍVEL APENAS NO DESKTOP PARA EVITAR ERROS DE UI, MAS O CÓDIGO ESTÁ SEGURO */}
-                                        {!isMobile && mode === "image" && (
-                                            <button onClick={() => setIsEditorOpen(true)} className="flex items-center gap-1.5 bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"><Edit className="w-3 h-3" /> Editar</button>
-                                        )}
-
+                                        <button onClick={() => setIsEditorOpen(true)} className="flex items-center gap-1.5 bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"><Edit className="w-3 h-3" /> Editar</button>
                                         <button onClick={() => handleShare(resultUrl, mode)} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors"><Share2 className="w-4 h-4" /></button>
                                         <button onClick={() => handleDownload(resultUrl, mode)} className="p-2 bg-white text-black hover:bg-gray-200 rounded-lg transition-colors shadow-lg shadow-white/10"><Download className="w-4 h-4" /></button>
                                     </div>
@@ -314,6 +380,7 @@ export default function Home() {
                                         <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
                                             <p className="text-[10px] text-gray-300 text-center line-clamp-2">{item.prompt}</p>
                                             <button onClick={() => handleDownload(item.url, item.type)} className="p-2 bg-white text-black rounded-full hover:scale-110 transition-transform"><Download className="w-4 h-4" /></button>
+                                            {item.type === 'image' && <button onClick={() => handleTransformToVideo(item.url)} className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-500" title="Animar"><ArrowRightCircle className="w-4 h-4" /></button>}
                                         </div>
                                     </div>
                                 ))}
