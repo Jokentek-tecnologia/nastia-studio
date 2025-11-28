@@ -4,12 +4,18 @@ import React, { useState } from "react";
 import axios from "axios";
 import { X, Check, CreditCard, Gift, Share2, Copy, Loader2, Crown } from "lucide-react";
 
+// LINKS DE PAGAMENTO (VOCÊ VAI COLOCAR OS SEUS DO STRIPE AQUI DEPOIS)
+const LINKS = {
+    plus: "https://buy.stripe.com/SEU_LINK_PLUS",
+    pro: "https://buy.stripe.com/SEU_LINK_PRO"
+};
+
 interface StoreModalProps {
     userId: string;
     currentPlan: string;
     referralCode: string;
     onClose: () => void;
-    onUpdate: () => void; // Para atualizar o saldo na tela principal
+    onUpdate: () => void;
 }
 
 export default function StoreModal({ userId, currentPlan, referralCode, onClose, onUpdate }: StoreModalProps) {
@@ -18,11 +24,43 @@ export default function StoreModal({ userId, currentPlan, referralCode, onClose,
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
+    // --- SEUS NOVOS PLANOS ATUALIZADOS ---
     const PLANS = [
-        { id: "free", name: "Free", credits: 100, price: "R$ 0", features: ["100 Créditos/mês", "Marca d'água", "Suporte Básico"] },
-        { id: "plus", name: "Plus", credits: 500, price: "R$ 69", features: ["500 Créditos/mês", "Marca d'água", "Acesso ao Chat"] },
-        { id: "pro", name: "PRO", credits: 1000, price: "R$ 99", features: ["1000 Créditos/mês", "Prioridade na Fila", "Acesso Antecipado"] },
-        { id: "agency", name: "Criação", credits: 2500, price: "R$ 199", features: ["2500 Créditos/mês", "SEM Marca d'água", "Licença Comercial"] },
+        {
+            id: "free",
+            name: "Free",
+            credits: 100,
+            price: "R$ 0",
+            features: [
+                "100 Créditos/mês",
+                "Com Marca d'água",
+                "Acesso Básico ao Chat"
+            ]
+        },
+        {
+            id: "plus",
+            name: "Plus",
+            credits: 500,
+            price: "R$ 69",
+            features: [
+                "500 Créditos/mês",
+                "🚫 SEM Marca d'água",
+                "Editor de Imagem",
+                "Chat com todas Personas"
+            ]
+        },
+        {
+            id: "pro",
+            name: "PRO",
+            credits: 1000,
+            price: "R$ 99",
+            features: [
+                "1000 Créditos/mês",
+                "🚫 SEM Marca d'água",
+                "Histórico Ilimitado",
+                "Suporte Prioritário"
+            ]
+        },
     ];
 
     const handleRedeem = async () => {
@@ -36,7 +74,7 @@ export default function StoreModal({ userId, currentPlan, referralCode, onClose,
                 code: couponCode
             });
             setMessage({ type: "success", text: "Cupom resgatado! Créditos adicionados." });
-            onUpdate(); // Atualiza o saldo lá no header
+            onUpdate();
             setCouponCode("");
         } catch (error: any) {
             setMessage({ type: "error", text: error.response?.data?.detail || "Cupom inválido." });
@@ -72,7 +110,7 @@ export default function StoreModal({ userId, currentPlan, referralCode, onClose,
                     {/* CARTÃO DE INDICAÇÃO */}
                     <div className="bg-blue-900/20 border border-blue-500/30 p-4 rounded-xl mt-4">
                         <h3 className="text-blue-400 text-xs font-bold mb-2 flex items-center gap-1"><Share2 className="w-3 h-3" /> INDIQUE E GANHE</h3>
-                        <p className="text-gray-400 text-[10px] mb-3">Ganhe 100 créditos por amigo indicado.</p>
+                        <p className="text-gray-400 text-[10px] mb-3">Ganhe 100 créditos por amigo.</p>
                         <div onClick={copyLink} className="bg-black/40 p-2 rounded border border-gray-600 text-xs text-white font-mono flex justify-between items-center cursor-pointer hover:border-white transition-colors">
                             <span className="truncate">{referralCode}</span>
                             <Copy className="w-3 h-3 text-gray-500" />
@@ -91,29 +129,39 @@ export default function StoreModal({ userId, currentPlan, referralCode, onClose,
 
                     {/* ABA PLANOS */}
                     {activeTab === "plans" && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             {PLANS.map((plan) => (
-                                <div key={plan.id} className={`p-5 rounded-xl border relative ${currentPlan === plan.id ? "border-yellow-500 bg-yellow-500/5" : "border-gray-700 bg-[#202022]"}`}>
+                                <div key={plan.id} className={`p-5 rounded-xl border relative flex flex-col ${currentPlan === plan.id ? "border-yellow-500 bg-yellow-500/5" : "border-gray-700 bg-[#202022]"}`}>
                                     {currentPlan === plan.id && <span className="absolute top-3 right-3 text-[10px] bg-yellow-500 text-black px-2 py-0.5 rounded-full font-bold">ATUAL</span>}
                                     <h3 className="text-lg font-bold text-white">{plan.name}</h3>
-                                    <div className="text-3xl font-bold text-white my-2">{plan.price}<span className="text-sm text-gray-500 font-normal">/mês</span></div>
-                                    <ul className="space-y-2 my-4">
+                                    <div className="text-2xl font-bold text-white my-2">{plan.price}<span className="text-sm text-gray-500 font-normal">/mês</span></div>
+                                    <ul className="space-y-2 my-4 flex-1">
                                         {plan.features.map((feat, i) => (
                                             <li key={i} className="text-xs text-gray-300 flex items-center gap-2">
                                                 <Check className="w-3 h-3 text-green-500" /> {feat}
                                             </li>
                                         ))}
                                     </ul>
-                                    <button
-                                        disabled={currentPlan === plan.id}
-                                        className={`w-full py-2 rounded-lg text-sm font-bold transition-all ${currentPlan === plan.id
-                                            ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                                            : "bg-white text-black hover:bg-gray-200"
-                                            }`}
-                                        onClick={() => alert("Aqui abriríamos o Checkout do Stripe/MercadoPago!")}
-                                    >
-                                        {currentPlan === plan.id ? "Plano Atual" : "Assinar Agora"}
-                                    </button>
+
+                                    {/* BOTÃO DE ASSINATURA */}
+                                    {plan.id !== 'free' && (
+                                        <a
+                                            href={plan.id === 'plus' ? LINKS.plus : LINKS.pro}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="block w-full mt-auto"
+                                        >
+                                            <button
+                                                disabled={currentPlan === plan.id}
+                                                className={`w-full py-2 rounded-lg text-sm font-bold transition-all ${currentPlan === plan.id
+                                                        ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                                                        : "bg-white text-black hover:bg-gray-200"
+                                                    }`}
+                                            >
+                                                {currentPlan === plan.id ? "Plano Atual" : "Assinar Agora"}
+                                            </button>
+                                        </a>
+                                    )}
                                 </div>
                             ))}
                         </div>
