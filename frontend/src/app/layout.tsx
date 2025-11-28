@@ -15,6 +15,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "NastIA Studio | Criativos com Inteligência Artificial",
   description: "Gere imagens e vídeos profissionais para seus anúncios em segundos com a NastIA. A plataforma completa para criadores e agências.",
+
+  // --- ADICIONE ESTA LINHA AQUI ---
+  manifest: "/manifest.json",
+  // --------------------------------
+
   keywords: ["IA", "Gerador de Imagem", "Gerador de Vídeo", "Marketing", "Criativos", "NastIA"],
   openGraph: {
     title: "NastIA Studio - Crie o Impossível",
@@ -23,7 +28,7 @@ export const metadata: Metadata = {
     siteName: "NastIA Studio",
     images: [
       {
-        url: "https://studio.nastia.com.br/logo_site.png", // Link da sua logo ou capa
+        url: "https://studio.nastia.com.br/app-logo.png", // Aproveitei para corrigir o nome da logo aqui também se precisar
         width: 800,
         height: 600,
       },
@@ -31,6 +36,10 @@ export const metadata: Metadata = {
     locale: "pt_BR",
     type: "website",
   },
+};
+
+export const viewport = {
+  themeColor: "#000000",
 };
 
 export default function RootLayout({
