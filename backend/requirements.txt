@@ -8,3 +8,4 @@ imageio
 requests
 supabase>=2.4.0
 python-multipart
+stripe

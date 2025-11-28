@@ -13,6 +13,8 @@ import tempfile
 from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip
 from typing import List
 from supabase import create_client, Client
+from fastapi import Request # Importe Request também
+import stripe
 
 if not hasattr(Image, 'ANTIALIAS'): Image.ANTIALIAS = Image.Resampling.LANCZOS
 
@@ -189,3 +191,65 @@ async def redeem_coupon_endpoint(req: CouponRequest):
     except Exception as e: 
         if "200" in str(e): return {"message": "Sucesso!"}
         raise HTTPException(400, "Erro cupom")
+
+        # CONFIGURAÇÃO STRIPE
+STRIPE_API_KEY = os.getenv("STRIPE_API_KEY") # Vamos colocar no .env depois
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET") # Vamos pegar no painel do Stripe
+stripe.api_key = STRIPE_API_KEY
+
+@app.post("/webhook")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig_header = request.headers.get('stripe-signature')
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.error.SignatureVerificationError as e:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    # EVENTO: Pagamento Aprovado
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        
+        # 1. Quem pagou? (Vem do ?client_reference_id=... que colocamos no frontend)
+        user_id = session.get('client_reference_id')
+        
+        # 2. Quanto pagou? (Em centavos. Ex: 6900 = R$ 69,00)
+        amount_paid = session.get('amount_total')
+        
+        if user_id:
+            print(f"Pagamento recebido de {user_id}. Valor: {amount_paid}")
+            
+            # LÓGICA DE ATRIBUIÇÃO (Simples, baseada no valor)
+            credits_to_add = 0
+            new_plan = None
+            
+            if amount_paid == 6900: # R$ 69,00 (Plus)
+                credits_to_add = 500
+                new_plan = 'plus'
+            elif amount_paid == 9900: # R$ 99,00 (Pro ou Pack)
+                # Como distinguir? Vamos assumir que 99 é PRO por enquanto.
+                # Ou se quiser ser generoso, dê 1000 créditos e vire Pro.
+                credits_to_add = 1000
+                new_plan = 'pro'
+            
+            # Atualiza no Supabase
+            try:
+                # Pega saldo atual
+                current = supabase.table("profiles").select("credits").eq("id", user_id).execute()
+                current_credits = current.data[0]['credits']
+                
+                update_data = {"credits": current_credits + credits_to_add}
+                if new_plan:
+                    update_data["plan_tier"] = new_plan
+                
+                supabase.table("profiles").update(update_data).eq("id", user_id).execute()
+                print("Créditos entregues com sucesso!")
+            except Exception as db_err:
+                print(f"Erro ao entregar créditos: {db_err}")
+
+    return {"status": "success"}
