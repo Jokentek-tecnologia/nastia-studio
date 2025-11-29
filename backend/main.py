@@ -128,14 +128,14 @@ def decode_base64_image(image_string):
 @app.get("/")
 def read_root(): return {"status": "NastIA V9 (Final Launch) Online 🚀"}
 
-# --- ROTA IMAGEM (CORRIGIDA PARA EDIÇÃO) ---
+# --- ROTA IMAGEM (COM SUPORTE TOTAL A FORMATOS) ---
 @app.post("/generate-image")
 async def generate_image(
     prompt: str = Form(...), 
     files: List[UploadFile] = File(None), 
-    from_image: str = Form(None), # CAMPO NOVO ADICIONADO
+    from_image: str = Form(None),
     user_id: str = Form(...),
-    aspect_ratio: str = Form("16:9")
+    aspect_ratio: str = Form("16:9") # Recebe o valor do Frontend (ex: "1:1", "21:9")
 ):
     try:
         # Define se é edição ou criação
@@ -146,11 +146,23 @@ async def generate_image(
         
         model = "gemini-2.5-flash-image"
         
-        # Se não tem imagem de entrada, injeta aspect ratio no prompt
+        # Mapeamento de texto para garantir que a IA entenda o formato
+        ratio_map = {
+            "16:9": "wide 16:9 aspect ratio",
+            "9:16": "tall 9:16 aspect ratio",
+            "1:1":  "square 1:1 aspect ratio",
+            "4:3":  "classic 4:3 aspect ratio",
+            "3:4":  "portrait 3:4 aspect ratio",
+            "21:9": "cinematic 21:9 aspect ratio"
+        }
+
+        # Se não tem imagem de entrada, injeta o aspect ratio no prompt
         if not has_input_image:
-            ratio_text = "wide 16:9 aspect ratio" if aspect_ratio == "16:9" else "tall 9:16 aspect ratio"
-            final_prompt = f"{prompt}. Create this image in {ratio_text}."
+            # Pega o texto correspondente ou usa 16:9 como padrão seguro
+            ratio_text = ratio_map.get(aspect_ratio, "wide 16:9 aspect ratio")
+            final_prompt = f"{prompt}. Create this image in {ratio_text}, high quality, realistic."
         else:
+            # Em edições, respeitamos o formato da imagem original
             final_prompt = prompt
 
         contents_parts = [types.Part.from_text(text=final_prompt)]
@@ -159,23 +171,24 @@ async def generate_image(
         input_img = None
         
         if files:
-            # Prioridade para Upload
             for file in files:
                 f_bytes = await file.read()
                 input_img = Image.open(io.BytesIO(f_bytes))
         elif from_image:
-            # Se não tem upload, usa o contexto (Base64)
             input_img = decode_base64_image(from_image)
 
-        # Adiciona a imagem ao payload do Gemini se existir
         if input_img:
             if input_img.mode != 'RGB':
                 input_img = input_img.convert('RGB')
-            contents_parts.append(types.Part.from_image(input_img))
+            
+            buf = io.BytesIO()
+            input_img.save(buf, format="JPEG")
+            img_bytes = buf.getvalue()
+            
+            contents_parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
         
         contents = [types.Content(role="user", parts=contents_parts)]
         
-        # Configuração
         generation_config = types.GenerateContentConfig(response_modalities=["IMAGE"])
         
         response = client.models.generate_content(
@@ -198,7 +211,6 @@ async def generate_image(
         raise HTTPException(500, "O Google não retornou imagem.")
     except Exception as e:
         print(f"Erro Geral Imagem: {e}")
-        # Log detalhado no console do server para debug
         traceback.print_exc() 
         raise HTTPException(500, str(e))
 
