@@ -6,7 +6,8 @@ import {
     Sparkles, Image as ImageIcon, Video as VideoIcon,
     Film, XCircle, Edit, LogOut, Coins, Gift,
     Share2, Download, Instagram, Globe, MessageCircle, Plus, Copy,
-    ArrowRightCircle, Layers, Clock, CheckCircle, RectangleHorizontal, RectangleVertical, Bell, ExternalLink, X
+    ArrowRightCircle, Layers, Clock, CheckCircle, Bell, ExternalLink, ChevronDown,
+    X
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { supabase } from "../lib/supabase";
@@ -15,6 +16,7 @@ import ChatWidget from "../components/ChatWidget";
 import StoreModal from "../components/StoreModal";
 import AdPlayer from "../components/AdPlayer";
 
+// Carregamento dinâmico do editor para evitar erro mobile
 const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
     ssr: false,
     loading: () => <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 text-white">Carregando Editor...</div>
@@ -29,6 +31,16 @@ const LONG_ADS = [
     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"
 ];
 
+// TODAS AS PROPORÇÕES
+const ASPECT_RATIOS = [
+    { value: "16:9", label: "Horizontal (16:9) - Youtube" },
+    { value: "9:16", label: "Vertical (9:16) - Stories/Reels" },
+    { value: "1:1", label: "Quadrado (1:1) - Feed" },
+    { value: "4:3", label: "Clássico (4:3)" },
+    { value: "3:4", label: "Retrato (3:4)" },
+    { value: "21:9", label: "Cinema (21:9)" },
+];
+
 export default function Home() {
     const [session, setSession] = useState<any>(null);
     const [credits, setCredits] = useState<number>(0);
@@ -40,7 +52,9 @@ export default function Home() {
     const [prompt, setPrompt] = useState("");
     const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [isMobile, setIsMobile] = useState(false);
-    const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16">("16:9");
+
+    // ESTADO DO ASPECT RATIO (Restaurei)
+    const [aspectRatio, setAspectRatio] = useState<string>("16:9");
 
     const [resultUrl, setResultUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -207,16 +221,7 @@ export default function Home() {
             </header>
 
             {isEditorOpen && resultUrl && <ImageEditor imageUrl={resultUrl} onClose={() => setIsEditorOpen(false)} />}
-
-            {isStoreOpen && (
-                <StoreModal
-                    userId={session.user.id}
-                    currentPlan={plan}
-                    referralCode={referralCode}
-                    onClose={() => setIsStoreOpen(false)}
-                    onUpdate={() => fetchProfile(session.user.id)}
-                />
-            )}
+            {isStoreOpen && <StoreModal userId={session.user.id} currentPlan={plan} referralCode={referralCode} onClose={() => setIsStoreOpen(false)} onUpdate={() => fetchProfile(session.user.id)} />}
 
             {loading && (
                 <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center">
@@ -229,11 +234,9 @@ export default function Home() {
                         <Sparkles className="w-5 h-5" />
                         <span className="font-bold tracking-widest">{pendingResult ? "PRONTO!" : "CRIANDO..."}</span>
                     </div>
-
                     <div className="w-full h-full absolute inset-0">
                         <AdPlayer src={currentAdUrl} onEnded={handleAdEnded} />
                     </div>
-
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} /></div>
                 </div>
             )}
@@ -251,9 +254,20 @@ export default function Home() {
                         <div className="w-full bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
                             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-500 via-orange-500 to-purple-500 opacity-20 group-hover:opacity-50 transition-opacity"></div>
 
-                            <div className="flex gap-2 mb-4">
-                                <button onClick={() => setAspectRatio("16:9")} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold border ${aspectRatio === "16:9" ? "bg-white text-black border-white" : "bg-transparent text-gray-500 border-gray-700 hover:border-gray-500"}`}><RectangleHorizontal className="w-4 h-4" /> 16:9</button>
-                                <button onClick={() => setAspectRatio("9:16")} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold border ${aspectRatio === "9:16" ? "bg-white text-black border-white" : "bg-transparent text-gray-500 border-gray-700 hover:border-gray-500"}`}><RectangleVertical className="w-4 h-4" /> 9:16</button>
+                            {/* SELETOR DE FORMATO (Menu Suspenso) */}
+                            <div className="relative w-full mb-4">
+                                <div className="relative">
+                                    <select
+                                        value={aspectRatio}
+                                        onChange={(e) => setAspectRatio(e.target.value)}
+                                        className="w-full bg-[#18181b] text-white border border-gray-700 rounded-xl p-3 pl-4 appearance-none cursor-pointer focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 transition-colors text-sm font-medium"
+                                    >
+                                        {ASPECT_RATIOS.map(ratio => (
+                                            <option key={ratio.value} value={ratio.value}>{ratio.label}</option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                                </div>
                             </div>
 
                             <div className="space-y-4 mb-6">
@@ -299,8 +313,7 @@ export default function Home() {
                                     <div className="flex flex-wrap gap-2">
                                         {mode === "image" && <button onClick={() => handleTransformToVideo(null)} className="flex items-center gap-1.5 bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-blue-500/20"><ArrowRightCircle className="w-3 h-3" /> Animar</button>}
 
-                                        {/* LÓGICA DE EXIBIÇÃO DO EDITOR NO CELULAR */}
-                                        {mode === "image" && (
+                                        {!isMobile && mode === "image" && (
                                             <button
                                                 onClick={() => isMobile ? handleMobileEditClick() : setIsEditorOpen(true)}
                                                 className="flex items-center gap-1.5 bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
@@ -329,7 +342,7 @@ export default function Home() {
                         ) : (
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                 {history.map((item) => (
-                                    <div key={item.id} className="aspect-square bg-gray-900 rounded-xl overflow-hidden relative group">
+                                    <div key={item.id} className="aspect-square bg-gray-900 rounded-xl overflow-hidden border border-gray-800 relative group">
                                         {item.type === 'image' ? <img src={item.url} className="w-full h-full object-cover" loading="lazy" /> : <video src={item.url} className="w-full h-full object-cover" muted />}
                                         <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
                                             <div className="flex gap-2">
