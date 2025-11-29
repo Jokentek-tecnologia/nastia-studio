@@ -292,7 +292,8 @@ export default function Home() {
 
                 <div className="flex w-full bg-gray-900 p-1.5 rounded-2xl border border-gray-800">
                     <button onClick={() => { setMode("image"); setImageFiles([]); }} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "image" ? "bg-gray-800 text-white" : "text-gray-500"}`}><ImageIcon className="w-5 h-5" /> Imagem</button>
-                    <button onClick={() => { setMode("video"); setImageFiles([]); }} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "video" ? "bg-blue-900/30 text-blue-200" : "text-gray-500"}`}><VideoIcon className="w-5 h-5" /> Vídeo</button>
+                    {/* Botão com a correção: Força 16:9 ao entrar em vídeo */}
+                    <button onClick={() => { setMode("video"); setImageFiles([]); setAspectRatio("16:9"); }} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "video" ? "bg-blue-900/30 text-blue-200" : "text-gray-500"}`}><VideoIcon className="w-5 h-5" /> Vídeo</button>
                     <button onClick={() => { setMode("gallery"); }} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "gallery" ? "bg-yellow-900/30 text-yellow-200" : "text-gray-500"}`}><Clock className="w-5 h-5" /> Galeria</button>
                 </div>
 
@@ -301,7 +302,7 @@ export default function Home() {
                         <div className="w-full bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
                             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-500 via-orange-500 to-purple-500 opacity-20 group-hover:opacity-50 transition-opacity"></div>
 
-                            {/* SELETOR DE FORMATO (Menu Suspenso) */}
+                            {/* SELETOR DE FORMATO (Filtrado) */}
                             <div className="relative w-full mb-4">
                                 <div className="relative">
                                     <select
@@ -309,12 +310,17 @@ export default function Home() {
                                         onChange={(e) => setAspectRatio(e.target.value)}
                                         className="w-full bg-[#18181b] text-white border border-gray-700 rounded-xl p-3 pl-4 appearance-none cursor-pointer focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 transition-colors text-sm font-medium"
                                     >
-                                        {ASPECT_RATIOS.map(ratio => (
-                                            <option key={ratio.value} value={ratio.value}>{ratio.label}</option>
-                                        ))}
+                                        {ASPECT_RATIOS
+                                            // Filtra opções se estiver no modo vídeo
+                                            .filter(ratio => mode === "image" || ["16:9", "9:16"].includes(ratio.value))
+                                            .map(ratio => (
+                                                <option key={ratio.value} value={ratio.value}>{ratio.label}</option>
+                                            ))
+                                        }
                                     </select>
                                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
                                 </div>
+                                {mode === "video" && <p className="text-[10px] text-gray-500 mt-1 ml-2">Modo vídeo suporta apenas 16:9 e 9:16.</p>}
                             </div>
 
                             <div className="space-y-4 mb-6">
