@@ -135,18 +135,15 @@ async def generate_image(
     files: List[UploadFile] = File(None), 
     from_image: str = Form(None),
     user_id: str = Form(...),
-    aspect_ratio: str = Form("16:9") # Recebe o valor do Frontend (ex: "1:1", "21:9")
+    aspect_ratio: str = Form("16:9")
 ):
     try:
-        # Define se é edição ou criação
         has_input_image = (files and len(files) > 0) or (from_image is not None)
-        
         cost = 10 if has_input_image else 5
         user_plan = check_and_deduct_credits(user_id, cost)
         
         model = "gemini-2.5-flash-image"
         
-        # Mapeamento de texto para garantir que a IA entenda o formato
         ratio_map = {
             "16:9": "wide 16:9 aspect ratio",
             "9:16": "tall 9:16 aspect ratio",
@@ -156,18 +153,13 @@ async def generate_image(
             "21:9": "cinematic 21:9 aspect ratio"
         }
 
-        # Se não tem imagem de entrada, injeta o aspect ratio no prompt
         if not has_input_image:
-            # Pega o texto correspondente ou usa 16:9 como padrão seguro
             ratio_text = ratio_map.get(aspect_ratio, "wide 16:9 aspect ratio")
             final_prompt = f"{prompt}. Create this image in {ratio_text}, high quality, realistic."
         else:
-            # Em edições, respeitamos o formato da imagem original
             final_prompt = prompt
 
         contents_parts = [types.Part.from_text(text=final_prompt)]
-        
-        # Processa imagem de entrada (Upload ou Contexto)
         input_img = None
         
         if files:
@@ -180,15 +172,12 @@ async def generate_image(
         if input_img:
             if input_img.mode != 'RGB':
                 input_img = input_img.convert('RGB')
-            
             buf = io.BytesIO()
             input_img.save(buf, format="JPEG")
             img_bytes = buf.getvalue()
-            
             contents_parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
         
         contents = [types.Content(role="user", parts=contents_parts)]
-        
         generation_config = types.GenerateContentConfig(response_modalities=["IMAGE"])
         
         response = client.models.generate_content(
@@ -214,7 +203,7 @@ async def generate_image(
         traceback.print_exc() 
         raise HTTPException(500, str(e))
 
-# --- ROTA VÍDEO (Veo com suporte a Aspect Ratio nativo) ---
+# --- ROTA VÍDEO ---
 @app.post("/generate-video")
 async def generate_video(
     prompt: str = Form(...), 
@@ -237,7 +226,6 @@ async def generate_video(
         }
 
         is_image_animation = False
-
         if file_start:
             s_bytes = await file_start.read()
             mime = file_start.content_type or "image/jpeg"
@@ -245,7 +233,6 @@ async def generate_video(
             is_image_animation = True
 
         operation = client.models.generate_videos(**veo_params)
-        
         while not operation.done:
             time.sleep(5)
             operation = client.operations.get(operation)
@@ -253,23 +240,41 @@ async def generate_video(
         res = operation.result
         if res and res.generated_videos:
             v_bytes = client.files.download(file=res.generated_videos[0].video)
-            
             if is_image_animation or user_plan in ["plus", "pro"]:
                 final_bytes = v_bytes
             else:
                 final_bytes = apply_video_watermark(v_bytes, user_plan)
-            
             public_url = upload_to_supabase(final_bytes, "mp4", "video/mp4")
             save_to_history(user_id, "video", public_url, prompt)
-            
             return {"video": public_url}
-        
         raise HTTPException(500, "O Google não retornou vídeo.")
     except Exception as e:
         print(f"Erro Vídeo: {e}")
         raise HTTPException(status_code=402 if "Saldo" in str(e) else 500, detail=str(e))
 
-# --- ROTA DE RASTREAMENTO DE INDICAÇÃO (CRÍTICA) ---
+# --- NOVA ROTA: RESGATAR MOEDAS POR PLANO PLUS ---
+@app.post("/redeem-coins")
+async def redeem_coins_endpoint(user_id: str = Form(...)):
+    try:
+        user_res = supabase.table("profiles").select("coins, plan_tier").eq("id", user_id).execute()
+        if not user_res.data: raise HTTPException(404, "User not found")
+        
+        user = user_res.data[0]
+        if (user.get('coins') or 0) < 250:
+            raise HTTPException(400, "Saldo de moedas insuficiente.")
+            
+        supabase.table("profiles").update({
+            "coins": user['coins'] - 250,
+            "plan_tier": "plus",
+            "credits": 1000 # Bônus de boas-vindas ao Plus
+        }).eq("id", user_id).execute()
+        
+        return {"status": "success", "message": "Plano Plus ativado!"}
+    except Exception as e:
+        print(f"Redeem Error: {e}")
+        raise HTTPException(500, str(e))
+
+# --- ROTA DE RASTREAMENTO (GAMIFICADA) ---
 class ReferralRequest(BaseModel):
     user_id: str
     referral_code: str
@@ -277,7 +282,7 @@ class ReferralRequest(BaseModel):
 @app.post("/track-referral")
 async def track_referral_endpoint(req: ReferralRequest):
     try:
-        user_check = supabase.table("profiles").select("referred_by, signup_bonus_given").eq("id", req.user_id).execute()
+        user_check = supabase.table("profiles").select("referred_by, signup_bonus_given, credits").eq("id", req.user_id).execute()
         if not user_check.data: return {"status": "error", "message": "User not found"}
         
         user_data = user_check.data[0]
@@ -290,11 +295,15 @@ async def track_referral_endpoint(req: ReferralRequest):
             ref_id = referrer.data[0]['id']
             ref_credits = referrer.data[0]['credits']
             
-            supabase.table("profiles").update({"credits": ref_credits + 50}).eq("id", ref_id).execute()
+            # Padrinho ganha 100 créditos
+            supabase.table("profiles").update({"credits": ref_credits + 100}).eq("id", ref_id).execute()
             
+            # Afilhado ganha 50 créditos extras
+            current_credits = user_data['credits']
             supabase.table("profiles").update({
                 "referred_by": req.referral_code,
-                "signup_bonus_given": True 
+                "signup_bonus_given": True,
+                "credits": current_credits + 50
             }).eq("id", req.user_id).execute()
             
             return {"status": "success"}
@@ -328,7 +337,7 @@ async def redeem_coupon_endpoint(req: CouponRequest):
         if "200" in str(e): return {"message": "Sucesso!"}
         raise HTTPException(400, "Erro cupom")
 
-# --- WEBHOOK STRIPE (Com bônus de 100 créditos) ---
+# --- WEBHOOK STRIPE (Com gamificação de Moedas) ---
 @app.post("/webhook")
 async def stripe_webhook(request: Request):
     payload = await request.body()
@@ -357,11 +366,17 @@ async def stripe_webhook(request: Request):
                 if new_plan: data["plan_tier"] = new_plan
                 supabase.table("profiles").update(data).eq("id", user_id).execute()
                 
+                # Gamificação: Padrinho ganha moedas se indicado assinar
                 ref_code = u_data.get('referred_by')
                 if ref_code and new_plan:
-                    referrer = supabase.table("profiles").select("id, credits").eq("referral_code", ref_code).execute()
+                    referrer = supabase.table("profiles").select("id, credits, coins").eq("referral_code", ref_code).execute()
                     if referrer.data:
-                        supabase.table("profiles").update({"credits": referrer.data[0]['credits'] + 100}).eq("id", referrer.data[0]['id']).execute()
+                        ref_data = referrer.data[0]
+                        new_coins = (ref_data.get('coins') or 0) + 10
+                        supabase.table("profiles").update({
+                            "credits": ref_data['credits'] + 100,
+                            "coins": new_coins
+                        }).eq("id", ref_data['id']).execute()
                         
             except Exception as e: print(f"Stripe Error: {e}")
 

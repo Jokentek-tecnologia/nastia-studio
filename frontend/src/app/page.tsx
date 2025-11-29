@@ -15,6 +15,7 @@ import Login from "../components/Login";
 import ChatWidget from "../components/ChatWidget";
 import StoreModal from "../components/StoreModal";
 import AdPlayer from "../components/AdPlayer";
+import GamifiedReferral from "../components/GamifiedReferral"; // NOVO COMPONENTE
 
 // Carregamento dinâmico do editor
 const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
@@ -66,6 +67,7 @@ export default function Home() {
 
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isStoreOpen, setIsStoreOpen] = useState(false);
+    const [isReferralOpen, setIsReferralOpen] = useState(false); // NOVO ESTADO
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -137,7 +139,6 @@ export default function Home() {
     const handleGenerate = async () => {
         if (!prompt) return;
 
-        // Verifica se é edição (tem resultado anterior mas nenhum upload novo)
         const isEditingContext = mode === "image" && resultUrl && imageFiles.length === 0;
 
         let cost = 5;
@@ -156,18 +157,14 @@ export default function Home() {
         formData.append("user_id", session.user.id);
         formData.append("aspect_ratio", aspectRatio);
 
-        // Se for edição, ajusta o prompt para contexto
         if (isEditingContext) formData.append("prompt", `EDIT IMAGE: ${prompt}`);
         else formData.append("prompt", prompt);
 
         try {
             if (mode === "image") {
                 if (imageFiles.length > 0) {
-                    // Caso 1: Upload de arquivos explícito
                     imageFiles.forEach(file => formData.append("files", file));
                 } else if (previousResult && isEditingContext) {
-                    // Caso 2: Edição de imagem gerada (Contexto)
-                    // Baixa a imagem e converte para Base64 para envio seguro
                     try {
                         const res = await fetch(previousResult);
                         const blob = await res.blob();
@@ -175,11 +172,9 @@ export default function Home() {
                         formData.append("from_image", base64Data);
                     } catch (e) {
                         console.error("Erro ao preparar imagem de contexto", e);
-                        // Se falhar o fetch, tenta sem imagem (vai gerar do zero)
                     }
                 }
             } else {
-                // Modo Vídeo
                 if (imageFiles.length > 0) formData.append("file_start", imageFiles[0]);
             }
 
@@ -228,6 +223,15 @@ export default function Home() {
                 </div>
 
                 <div className="flex items-center gap-4">
+                    {/* BOTÃO GAMIFICADO DE INDICAÇÃO */}
+                    <button
+                        onClick={() => setIsReferralOpen(true)}
+                        className="hidden md:flex items-center gap-2 bg-gradient-to-r from-purple-900 to-pink-900 border border-purple-500/30 px-3 py-1.5 rounded-full hover:scale-105 transition-transform group mr-2"
+                    >
+                        <Gift className="w-4 h-4 text-pink-400 group-hover:animate-bounce" />
+                        <span className="text-xs font-bold text-pink-100">Ganhe Prêmios</span>
+                    </button>
+
                     <div className="relative">
                         <button onClick={toggleNotifications} className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white relative">
                             <Bell className="w-5 h-5" />
@@ -270,6 +274,15 @@ export default function Home() {
             {isEditorOpen && resultUrl && <ImageEditor imageUrl={resultUrl} onClose={() => setIsEditorOpen(false)} />}
             {isStoreOpen && <StoreModal userId={session.user.id} currentPlan={plan} referralCode={referralCode} onClose={() => setIsStoreOpen(false)} onUpdate={() => fetchProfile(session.user.id)} />}
 
+            {/* POPUP DE INDICAÇÃO */}
+            {isReferralOpen && referralCode && (
+                <GamifiedReferral
+                    userId={session.user.id}
+                    referralCode={referralCode}
+                    onClose={() => setIsReferralOpen(false)}
+                />
+            )}
+
             {loading && (
                 <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center">
                     {pendingResult && (
@@ -292,7 +305,6 @@ export default function Home() {
 
                 <div className="flex w-full bg-gray-900 p-1.5 rounded-2xl border border-gray-800">
                     <button onClick={() => { setMode("image"); setImageFiles([]); }} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "image" ? "bg-gray-800 text-white" : "text-gray-500"}`}><ImageIcon className="w-5 h-5" /> Imagem</button>
-                    {/* Botão com a correção: Força 16:9 ao entrar em vídeo */}
                     <button onClick={() => { setMode("video"); setImageFiles([]); setAspectRatio("16:9"); }} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "video" ? "bg-blue-900/30 text-blue-200" : "text-gray-500"}`}><VideoIcon className="w-5 h-5" /> Vídeo</button>
                     <button onClick={() => { setMode("gallery"); }} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "gallery" ? "bg-yellow-900/30 text-yellow-200" : "text-gray-500"}`}><Clock className="w-5 h-5" /> Galeria</button>
                 </div>
@@ -302,7 +314,6 @@ export default function Home() {
                         <div className="w-full bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
                             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-500 via-orange-500 to-purple-500 opacity-20 group-hover:opacity-50 transition-opacity"></div>
 
-                            {/* SELETOR DE FORMATO (Filtrado) */}
                             <div className="relative w-full mb-4">
                                 <div className="relative">
                                     <select
@@ -311,7 +322,6 @@ export default function Home() {
                                         className="w-full bg-[#18181b] text-white border border-gray-700 rounded-xl p-3 pl-4 appearance-none cursor-pointer focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 transition-colors text-sm font-medium"
                                     >
                                         {ASPECT_RATIOS
-                                            // Filtra opções se estiver no modo vídeo
                                             .filter(ratio => mode === "image" || ["16:9", "9:16"].includes(ratio.value))
                                             .map(ratio => (
                                                 <option key={ratio.value} value={ratio.value}>{ratio.label}</option>
