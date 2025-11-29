@@ -113,6 +113,18 @@ def apply_video_watermark(v_bytes: bytes, plan: str) -> bytes:
             if os.path.exists(out): os.remove(out)
         except: pass
 
+def decode_base64_image(image_string):
+    """Decodifica imagem base64 de forma segura."""
+    if not image_string: return None
+    try:
+        if "base64," in image_string:
+            image_string = image_string.split("base64,")[1]
+        image_data = base64.b64decode(image_string)
+        return Image.open(io.BytesIO(image_data))
+    except Exception as e:
+        print(f"Erro Decode: {str(e)}")
+        raise HTTPException(status_code=400, detail="Erro ao processar imagem: from_image (Formato inválido)")
+
 @app.get("/")
 def read_root(): return {"status": "NastIA V9 (Final Launch) Online 🚀"}
 
@@ -121,54 +133,51 @@ def read_root(): return {"status": "NastIA V9 (Final Launch) Online 🚀"}
 async def generate_image(
     prompt: str = Form(...), 
     files: List[UploadFile] = File(None), 
+    from_image: str = Form(None), # CAMPO NOVO ADICIONADO
     user_id: str = Form(...),
     aspect_ratio: str = Form("16:9")
 ):
     try:
-        num_files = len(files) if files else 0
-        cost = 10 if num_files > 1 else 5
+        # Define se é edição ou criação
+        has_input_image = (files and len(files) > 0) or (from_image is not None)
+        
+        cost = 10 if has_input_image else 5
         user_plan = check_and_deduct_credits(user_id, cost)
         
         model = "gemini-2.5-flash-image"
         
-        # Prepara o prompt
-        if not files:
-            # Se não tem arquivos, injeta o aspect ratio no prompt
+        # Se não tem imagem de entrada, injeta aspect ratio no prompt
+        if not has_input_image:
             ratio_text = "wide 16:9 aspect ratio" if aspect_ratio == "16:9" else "tall 9:16 aspect ratio"
             final_prompt = f"{prompt}. Create this image in {ratio_text}."
         else:
-            # Se tem arquivos (edição), usa o prompt original
             final_prompt = prompt
 
         contents_parts = [types.Part.from_text(text=final_prompt)]
         
+        # Processa imagem de entrada (Upload ou Contexto)
+        input_img = None
+        
         if files:
+            # Prioridade para Upload
             for file in files:
-                try:
-                    f_bytes = await file.read()
-                    img = Image.open(io.BytesIO(f_bytes))
-                    
-                    # Converte para RGB para garantir compatibilidade
-                    if img.mode != 'RGB':
-                        img = img.convert('RGB')
-                    
-                    # Adiciona a imagem convertida
-                    contents_parts.append(types.Part.from_image(img))
-                except Exception as img_err:
-                    print(f"Erro ao processar imagem de entrada: {img_err}")
-                    raise HTTPException(400, f"Erro ao processar imagem: {str(img_err)}")
+                f_bytes = await file.read()
+                input_img = Image.open(io.BytesIO(f_bytes))
+        elif from_image:
+            # Se não tem upload, usa o contexto (Base64)
+            input_img = decode_base64_image(from_image)
+
+        # Adiciona a imagem ao payload do Gemini se existir
+        if input_img:
+            if input_img.mode != 'RGB':
+                input_img = input_img.convert('RGB')
+            contents_parts.append(types.Part.from_image(input_img))
         
         contents = [types.Content(role="user", parts=contents_parts)]
         
-        # Configuração: Se tiver arquivos (edição), NÃO envia aspect_ratio na config
+        # Configuração
         generation_config = types.GenerateContentConfig(response_modalities=["IMAGE"])
         
-        # Apenas adiciona aspect_ratio na config se NÃO tiver arquivos (geração do zero)
-        # Isso evita conflitos quando a API já tem uma imagem de referência
-        if not files:
-             # Nota: Algumas versões da API preferem aspect ratio no prompt, mas vamos tentar manter limpo aqui
-             pass 
-
         response = client.models.generate_content(
             model=model, 
             contents=contents, 
@@ -189,7 +198,8 @@ async def generate_image(
         raise HTTPException(500, "O Google não retornou imagem.")
     except Exception as e:
         print(f"Erro Geral Imagem: {e}")
-        # Retorna o erro real para o frontend
+        # Log detalhado no console do server para debug
+        traceback.print_exc() 
         raise HTTPException(500, str(e))
 
 # --- ROTA VÍDEO (Veo com suporte a Aspect Ratio nativo) ---
@@ -205,7 +215,6 @@ async def generate_video(
         user_plan = check_and_deduct_credits(user_id, cost)
         model = "veo-3.1-generate-preview"
         
-        # O Veo aceita aspect_ratio na config, diferente do Nano Banana
         veo_params = {
             "model": model, 
             "prompt": prompt, 
@@ -233,7 +242,6 @@ async def generate_video(
         if res and res.generated_videos:
             v_bytes = client.files.download(file=res.generated_videos[0].video)
             
-            # Se for animação de imagem OU plano pago, sem marca d'água
             if is_image_animation or user_plan in ["plus", "pro"]:
                 final_bytes = v_bytes
             else:
@@ -257,7 +265,6 @@ class ReferralRequest(BaseModel):
 @app.post("/track-referral")
 async def track_referral_endpoint(req: ReferralRequest):
     try:
-        # Verifica se já foi indicado
         user_check = supabase.table("profiles").select("referred_by, signup_bonus_given").eq("id", req.user_id).execute()
         if not user_check.data: return {"status": "error", "message": "User not found"}
         
@@ -265,17 +272,14 @@ async def track_referral_endpoint(req: ReferralRequest):
         if user_data.get('referred_by') or user_data.get('signup_bonus_given'):
              return {"status": "ignored", "message": "Already referred"}
 
-        # Busca Padrinho
         referrer = supabase.table("profiles").select("id, credits").eq("referral_code", req.referral_code).execute()
         
         if referrer.data:
             ref_id = referrer.data[0]['id']
             ref_credits = referrer.data[0]['credits']
             
-            # Dá 50 créditos ao Padrinho
             supabase.table("profiles").update({"credits": ref_credits + 50}).eq("id", ref_id).execute()
             
-            # Registra no afilhado
             supabase.table("profiles").update({
                 "referred_by": req.referral_code,
                 "signup_bonus_given": True 
@@ -335,14 +339,12 @@ async def stripe_webhook(request: Request):
                 if session.get('mode') == 'subscription': new_plan = 'pro'
             
             try:
-                # Atualiza quem comprou
                 curr = supabase.table("profiles").select("credits, referred_by").eq("id", user_id).execute()
                 u_data = curr.data[0]
                 data = {"credits": u_data['credits'] + to_add}
                 if new_plan: data["plan_tier"] = new_plan
                 supabase.table("profiles").update(data).eq("id", user_id).execute()
                 
-                # Bônus para o Padrinho (Se existir e se for assinatura)
                 ref_code = u_data.get('referred_by')
                 if ref_code and new_plan:
                     referrer = supabase.table("profiles").select("id, credits").eq("referral_code", ref_code).execute()

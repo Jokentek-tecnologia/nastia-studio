@@ -16,7 +16,7 @@ import ChatWidget from "../components/ChatWidget";
 import StoreModal from "../components/StoreModal";
 import AdPlayer from "../components/AdPlayer";
 
-// Carregamento dinâmico do editor para evitar erro mobile
+// Carregamento dinâmico do editor
 const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
     ssr: false,
     loading: () => <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 text-white">Carregando Editor...</div>
@@ -31,7 +31,6 @@ const LONG_ADS = [
     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"
 ];
 
-// TODAS AS PROPORÇÕES
 const ASPECT_RATIOS = [
     { value: "16:9", label: "Horizontal (16:9) - Youtube" },
     { value: "9:16", label: "Vertical (9:16) - Stories/Reels" },
@@ -53,7 +52,6 @@ export default function Home() {
     const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [isMobile, setIsMobile] = useState(false);
 
-    // ESTADO DO ASPECT RATIO (Restaurei)
     const [aspectRatio, setAspectRatio] = useState<string>("16:9");
 
     const [resultUrl, setResultUrl] = useState<string | null>(null);
@@ -127,29 +125,78 @@ export default function Home() {
 
     const prepareAd = () => { const list = mode === "image" ? SHORT_ADS : LONG_ADS; setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]); setAdProgress(0); };
 
+    // Função Auxiliar para converter Blob em Base64
+    const blobToBase64 = (blob: Blob): Promise<string> => {
+        return new Promise((resolve, _) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+        });
+    };
+
     const handleGenerate = async () => {
         if (!prompt) return;
+
+        // Verifica se é edição (tem resultado anterior mas nenhum upload novo)
         const isEditingContext = mode === "image" && resultUrl && imageFiles.length === 0;
+
         let cost = 5;
         if (mode === "image" && (imageFiles.length > 1 || isEditingContext)) cost = 10;
         if (mode === "video") cost = 20;
-        if (credits < cost) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
-        prepareAd(); setLoading(true); const previousResult = resultUrl; setResultUrl(null); setPendingResult(null);
-        const formData = new FormData(); formData.append("user_id", session.user.id); formData.append("aspect_ratio", aspectRatio);
-        if (isEditingContext) formData.append("prompt", `EDIT IMAGE: ${prompt}`); else formData.append("prompt", prompt);
 
-        if (mode === "image") {
-            if (imageFiles.length > 0) imageFiles.forEach(file => formData.append("files", file));
-            else if (previousResult) { try { const res = await fetch(previousResult); const blob = await res.blob(); const file = new File([blob], "ctx.jpg", { type: "image/jpeg" }); formData.append("files", file); } catch (e) { } }
-        } else { if (imageFiles.length > 0) formData.append("file_start", imageFiles[0]); }
+        if (credits < cost) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
+
+        prepareAd();
+        setLoading(true);
+        const previousResult = resultUrl;
+        setResultUrl(null);
+        setPendingResult(null);
+
+        const formData = new FormData();
+        formData.append("user_id", session.user.id);
+        formData.append("aspect_ratio", aspectRatio);
+
+        // Se for edição, ajusta o prompt para contexto
+        if (isEditingContext) formData.append("prompt", `EDIT IMAGE: ${prompt}`);
+        else formData.append("prompt", prompt);
 
         try {
+            if (mode === "image") {
+                if (imageFiles.length > 0) {
+                    // Caso 1: Upload de arquivos explícito
+                    imageFiles.forEach(file => formData.append("files", file));
+                } else if (previousResult && isEditingContext) {
+                    // Caso 2: Edição de imagem gerada (Contexto)
+                    // Baixa a imagem e converte para Base64 para envio seguro
+                    try {
+                        const res = await fetch(previousResult);
+                        const blob = await res.blob();
+                        const base64Data = await blobToBase64(blob);
+                        formData.append("from_image", base64Data);
+                    } catch (e) {
+                        console.error("Erro ao preparar imagem de contexto", e);
+                        // Se falhar o fetch, tenta sem imagem (vai gerar do zero)
+                    }
+                }
+            } else {
+                // Modo Vídeo
+                if (imageFiles.length > 0) formData.append("file_start", imageFiles[0]);
+            }
+
             const endpoint = mode === "image" ? `${process.env.NEXT_PUBLIC_API_URL}/generate-image` : `${process.env.NEXT_PUBLIC_API_URL}/generate-video`;
             const res = await axios.post(endpoint, formData, { headers: { "Content-Type": "multipart/form-data" } });
-            fetchProfile(session.user.id); fetchHistory(session.user.id);
+
+            fetchProfile(session.user.id);
+            fetchHistory(session.user.id);
+
             const url = res.data.image || res.data.video;
             if (mode === "video") { setResultUrl(url); setLoading(false); } else { setPendingResult(url); }
-        } catch (error: any) { alert(error.response?.data?.detail || "Erro."); setLoading(false); if (mode === "image") setResultUrl(previousResult); }
+
+        } catch (error: any) {
+            alert(error.response?.data?.detail || "Erro ao processar.");
+            setLoading(false);
+            if (mode === "image") setResultUrl(previousResult);
+        }
     };
 
     const handleAdEnded = () => { if (mode === "image" && pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
