@@ -116,7 +116,7 @@ def apply_video_watermark(v_bytes: bytes, plan: str) -> bytes:
 @app.get("/")
 def read_root(): return {"status": "NastIA V9 (Final Launch) Online 🚀"}
 
-# --- ROTA IMAGEM (Com correção de Aspect Ratio via Prompt) ---
+# --- ROTA IMAGEM (CORRIGIDA PARA EDIÇÃO) ---
 @app.post("/generate-image")
 async def generate_image(
     prompt: str = Form(...), 
@@ -131,22 +131,48 @@ async def generate_image(
         
         model = "gemini-2.5-flash-image"
         
-        # INJEÇÃO DE FORMATO NO PROMPT (Evita erro 400 do Google)
-        ratio_text = "wide landscape 16:9 aspect ratio" if aspect_ratio == "16:9" else "tall portrait 9:16 aspect ratio"
-        enhanced_prompt = f"{prompt}. (Create this image in {ratio_text})."
-        
-        contents = [types.Content(role="user", parts=[types.Part.from_text(text=enhanced_prompt)])]
+        # Prepara o prompt
+        if not files:
+            # Se não tem arquivos, injeta o aspect ratio no prompt
+            ratio_text = "wide 16:9 aspect ratio" if aspect_ratio == "16:9" else "tall 9:16 aspect ratio"
+            final_prompt = f"{prompt}. Create this image in {ratio_text}."
+        else:
+            # Se tem arquivos (edição), usa o prompt original
+            final_prompt = prompt
+
+        contents_parts = [types.Part.from_text(text=final_prompt)]
         
         if files:
             for file in files:
-                f_bytes = await file.read()
-                img = Image.open(io.BytesIO(f_bytes))
-                contents[0].parts.append(types.Part.from_image(img))
+                try:
+                    f_bytes = await file.read()
+                    img = Image.open(io.BytesIO(f_bytes))
+                    
+                    # Converte para RGB para garantir compatibilidade
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    
+                    # Adiciona a imagem convertida
+                    contents_parts.append(types.Part.from_image(img))
+                except Exception as img_err:
+                    print(f"Erro ao processar imagem de entrada: {img_err}")
+                    raise HTTPException(400, f"Erro ao processar imagem: {str(img_err)}")
         
+        contents = [types.Content(role="user", parts=contents_parts)]
+        
+        # Configuração: Se tiver arquivos (edição), NÃO envia aspect_ratio na config
+        generation_config = types.GenerateContentConfig(response_modalities=["IMAGE"])
+        
+        # Apenas adiciona aspect_ratio na config se NÃO tiver arquivos (geração do zero)
+        # Isso evita conflitos quando a API já tem uma imagem de referência
+        if not files:
+             # Nota: Algumas versões da API preferem aspect ratio no prompt, mas vamos tentar manter limpo aqui
+             pass 
+
         response = client.models.generate_content(
             model=model, 
             contents=contents, 
-            config=types.GenerateContentConfig(response_modalities=["IMAGE"])
+            config=generation_config
         )
 
         if response.candidates and response.candidates[0].content.parts:
@@ -162,7 +188,8 @@ async def generate_image(
                     
         raise HTTPException(500, "O Google não retornou imagem.")
     except Exception as e:
-        print(f"Erro Imagem: {e}")
+        print(f"Erro Geral Imagem: {e}")
+        # Retorna o erro real para o frontend
         raise HTTPException(500, str(e))
 
 # --- ROTA VÍDEO (Veo com suporte a Aspect Ratio nativo) ---

@@ -140,12 +140,11 @@ export default function Home() {
 
     const handleAdEnded = () => { if (mode === "image" && pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
     const handleSkipAd = () => { if (pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
-    const copyReferral = () => { navigator.clipboard.writeText(`https://nastia.com.br?ref=${referralCode}`); alert("Link copiado!"); }
+    const copyReferral = () => { navigator.clipboard.writeText(`https://nastia.com.br?ref=${referralCode}`); alert("Copiado!"); }
     const handleDownload = (url: string, type: string) => { const link = document.createElement("a"); link.href = url; link.download = `NastIA.${type === 'image' ? 'jpg' : 'mp4'}`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
     const handleShare = async (url: string, type: string) => { if (navigator.share) try { const res = await fetch(url); const blob = await res.blob(); await navigator.share({ files: [new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type })] }); } catch (e) { } else alert("Use Baixar."); };
     useEffect(() => { if (loading) { const i = setInterval(() => setAdProgress(o => (o < 95 ? o + 0.5 : o)), 100); return () => clearInterval(i); } }, [loading]);
 
-    // LÓGICA DE FECHAMENTO MÚTUO (Resolve item 6)
     const toggleStore = () => { setIsStoreOpen(!isStoreOpen); setShowNotifications(false); };
     const toggleNotifications = () => { setShowNotifications(!showNotifications); setIsStoreOpen(false); };
 
@@ -157,39 +156,90 @@ export default function Home() {
 
     return (
         <main className="min-h-screen bg-[#050505] text-white flex flex-col font-sans relative overflow-x-hidden">
+
             <header className="w-full p-4 border-b border-gray-800 bg-black/50 backdrop-blur-md flex justify-between items-center sticky top-0 z-30">
-                <div className="flex items-center gap-3"><img src="/app-logo.png" className="h-10 w-auto object-contain" /><div className="hidden sm:block"><h1 className="font-bold text-lg leading-none">NastIA Studio</h1><p className="text-[10px] text-gray-500">Plataforma Criativa</p></div></div>
+                <div className="flex items-center gap-3">
+                    <img src="/app-logo.png" alt="NastIA Logo" className="h-10 w-auto object-contain" />
+                    <div className="hidden sm:block">
+                        <h1 className="font-bold text-lg leading-none">NastIA Studio</h1>
+                        <p className="text-[10px] text-gray-500">Plataforma Criativa</p>
+                    </div>
+                </div>
+
                 <div className="flex items-center gap-4">
                     <div className="relative">
-                        <button onClick={toggleNotifications} className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white relative"><Bell className="w-5 h-5" />{notifications.length > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#050505]"></span>}</button>
+                        <button onClick={toggleNotifications} className="p-2 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white relative">
+                            <Bell className="w-5 h-5" />
+                            {notifications.length > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#050505]"></span>}
+                        </button>
                         {showNotifications && (
-                            // CSS CORRIGIDO PARA MOBILE (Não vaza mais da tela)
-                            <div className="absolute top-full right-[-50px] sm:right-0 mt-2 w-[90vw] sm:w-80 bg-[#18181b] border border-gray-700 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
-                                <div className="p-3 border-b border-gray-800 text-xs font-bold text-gray-400 flex justify-between"><span>Notificações</span><button onClick={() => setShowNotifications(false)}><X className="w-4 h-4" /></button></div>
-                                {notifications.length === 0 ? <div className="p-4 text-center text-xs text-gray-600">Nada por aqui.</div> : notifications.map(n => (
-                                    <div key={n.id} className="p-3 border-b border-gray-800 hover:bg-gray-800/50"><h4 className="text-sm font-bold text-white mb-1">{n.title}</h4><p className="text-xs text-gray-400">{n.message}</p>{n.link && <a href={n.link} target="_blank" className="text-[10px] text-yellow-500 hover:underline mt-2 block flex items-center gap-1">Ver mais <ExternalLink className="w-3 h-3" /></a>}</div>
-                                ))}
+                            <div className="fixed top-20 left-4 right-4 z-50 sm:absolute sm:top-full sm:right-0 sm:left-auto sm:w-80 bg-[#18181b] border border-gray-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2">
+                                <div className="p-3 border-b border-gray-800 text-xs font-bold text-gray-400 flex justify-between">
+                                    <span>Notificações</span>
+                                    <button onClick={() => setShowNotifications(false)}><X className="w-4 h-4" /></button>
+                                </div>
+                                {notifications.length === 0 ? (
+                                    <div className="p-4 text-center text-xs text-gray-600">Nada por aqui.</div>
+                                ) : (
+                                    notifications.map(n => (
+                                        <div key={n.id} className="p-3 border-b border-gray-800 hover:bg-gray-800/50">
+                                            <h4 className="text-sm font-bold text-white mb-1">{n.title}</h4>
+                                            <p className="text-xs text-gray-400 leading-relaxed">{n.message}</p>
+                                            {n.link && <a href={n.link} target="_blank" className="text-[10px] text-yellow-500 hover:underline mt-2 block flex items-center gap-1">Ver mais <ExternalLink className="w-3 h-3" /></a>}
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         )}
                     </div>
-                    <div className="flex flex-col items-end cursor-pointer hover:opacity-80 transition-opacity" onClick={toggleStore}><div className="flex items-center gap-1.5 text-yellow-500 font-bold"><Coins className="w-4 h-4" /> <span>{credits}</span></div><div className="text-[10px] text-gray-500 bg-gray-900 px-2 rounded-full border border-gray-800 uppercase">{plan}</div></div>
-                    <img src={session.user.user_metadata.avatar_url} className="w-9 h-9 rounded-full border border-gray-700" /><button onClick={handleLogout} className="p-2 hover:bg-red-900/20 text-gray-400 hover:text-red-500 rounded-lg"><LogOut className="w-5 h-5" /></button>
+
+                    <div className="flex flex-col items-end cursor-pointer hover:opacity-80 transition-opacity" onClick={toggleStore}>
+                        <div className="flex items-center gap-1.5 text-yellow-500 font-bold">
+                            <Coins className="w-4 h-4" />
+                            <span>{credits}</span>
+                        </div>
+                        <div className="text-[10px] text-gray-500 bg-gray-900 px-2 rounded-full border border-gray-800 uppercase">{plan}</div>
+                    </div>
+
+                    <img src={session.user.user_metadata.avatar_url} className="w-9 h-9 rounded-full border border-gray-700" />
+                    <button onClick={handleLogout} className="p-2 hover:bg-red-900/20 text-gray-400 hover:text-red-500 rounded-lg"><LogOut className="w-5 h-5" /></button>
                 </div>
             </header>
 
             {isEditorOpen && resultUrl && <ImageEditor imageUrl={resultUrl} onClose={() => setIsEditorOpen(false)} />}
-            {isStoreOpen && <StoreModal userId={session.user.id} currentPlan={plan} referralCode={referralCode} onClose={() => setIsStoreOpen(false)} onUpdate={() => fetchProfile(session.user.id)} />}
+
+            {isStoreOpen && (
+                <StoreModal
+                    userId={session.user.id}
+                    currentPlan={plan}
+                    referralCode={referralCode}
+                    onClose={() => setIsStoreOpen(false)}
+                    onUpdate={() => fetchProfile(session.user.id)}
+                />
+            )}
 
             {loading && (
                 <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center">
-                    {pendingResult && <button onClick={handleSkipAd} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-green-500 text-black px-8 py-4 rounded-full font-bold text-xl shadow-2xl animate-bounce flex items-center gap-2"><CheckCircle className="w-6 h-6" /> VER RESULTADO AGORA</button>}
-                    <div className="absolute top-8 right-8 flex items-center gap-2 text-yellow-500 animate-pulse z-20"><Sparkles className="w-5 h-5" /><span className="font-bold tracking-widest">{pendingResult ? "PRONTO!" : "CRIANDO..."}</span></div>
-                    <div className="w-full h-full absolute inset-0"><AdPlayer src={currentAdUrl} onEnded={handleAdEnded} /></div>
+                    {pendingResult && (
+                        <button onClick={handleSkipAd} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-green-500 text-black px-8 py-4 rounded-full font-bold text-xl shadow-2xl animate-bounce flex items-center gap-2 hover:bg-green-400 transition-all cursor-pointer">
+                            <CheckCircle className="w-6 h-6" /> VER RESULTADO AGORA
+                        </button>
+                    )}
+                    <div className="absolute top-8 right-8 flex items-center gap-2 text-yellow-500 animate-pulse z-20">
+                        <Sparkles className="w-5 h-5" />
+                        <span className="font-bold tracking-widest">{pendingResult ? "PRONTO!" : "CRIANDO..."}</span>
+                    </div>
+
+                    <div className="w-full h-full absolute inset-0">
+                        <AdPlayer src={currentAdUrl} onEnded={handleAdEnded} />
+                    </div>
+
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} /></div>
                 </div>
             )}
 
             <div className="flex-1 flex flex-col items-center justify-center p-4 py-10 w-full max-w-5xl mx-auto space-y-8">
+
                 <div className="flex w-full bg-gray-900 p-1.5 rounded-2xl border border-gray-800">
                     <button onClick={() => { setMode("image"); setImageFiles([]); }} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "image" ? "bg-gray-800 text-white" : "text-gray-500"}`}><ImageIcon className="w-5 h-5" /> Imagem</button>
                     <button onClick={() => { setMode("video"); setImageFiles([]); }} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "video" ? "bg-blue-900/30 text-blue-200" : "text-gray-500"}`}><VideoIcon className="w-5 h-5" /> Vídeo</button>
@@ -200,10 +250,12 @@ export default function Home() {
                     <>
                         <div className="w-full bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
                             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-500 via-orange-500 to-purple-500 opacity-20 group-hover:opacity-50 transition-opacity"></div>
+
                             <div className="flex gap-2 mb-4">
                                 <button onClick={() => setAspectRatio("16:9")} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold border ${aspectRatio === "16:9" ? "bg-white text-black border-white" : "bg-transparent text-gray-500 border-gray-700 hover:border-gray-500"}`}><RectangleHorizontal className="w-4 h-4" /> 16:9</button>
                                 <button onClick={() => setAspectRatio("9:16")} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold border ${aspectRatio === "9:16" ? "bg-white text-black border-white" : "bg-transparent text-gray-500 border-gray-700 hover:border-gray-500"}`}><RectangleVertical className="w-4 h-4" /> 9:16</button>
                             </div>
+
                             <div className="space-y-4 mb-6">
                                 <div className="flex flex-wrap gap-3">
                                     {imageFiles.map((file, idx) => (
@@ -213,15 +265,31 @@ export default function Home() {
                                         </div>
                                     ))}
                                     {((mode === "image" && imageFiles.length < 8) || (mode === "video" && imageFiles.length < 1)) && (
-                                        <button onClick={() => fileInputRef.current?.click()} className="w-20 h-20 border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center text-gray-500"><Plus className="w-6 h-6" /><span className="text-[9px] mt-1">{mode === 'video' ? 'Start Frame' : 'Add'}</span></button>
+                                        <button onClick={() => fileInputRef.current?.click()} className="w-20 h-20 border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center text-gray-500 hover:text-white hover:border-gray-500 transition-all hover:bg-gray-800/50">
+                                            <Plus className="w-6 h-6" /><span className="text-[9px] mt-1">{mode === 'video' ? 'Start Frame' : 'Add'}</span>
+                                        </button>
                                     )}
                                     <input type="file" ref={fileInputRef} onChange={handleImageSelect} className="hidden" accept="image/*" multiple={mode === "image"} />
                                 </div>
-                                {isEditing && <div className="flex items-center gap-2 text-xs text-yellow-500 bg-yellow-500/10 p-2 rounded-lg border border-yellow-500/20"><Layers className="w-4 h-4" /><span>Modo Edição Ativo</span><button onClick={handleClearAll} className="ml-auto hover:underline text-gray-400 hover:text-white">Limpar</button></div>}
-                                {mode === "video" && imageFiles.length === 0 && <p className="text-xs text-blue-400 flex items-center gap-2"><Film className="w-3 h-3" /> Dica: Adicione uma imagem para guiar o vídeo.</p>}
+                                {isEditing && (
+                                    <div className="flex items-center gap-2 text-xs text-yellow-500 bg-yellow-500/10 p-2 rounded-lg border border-yellow-500/20">
+                                        <Layers className="w-4 h-4" />
+                                        <span>Modo Edição Ativo: A IA vai alterar a imagem atual.</span>
+                                        <button onClick={handleClearAll} className="ml-auto hover:underline text-gray-400 hover:text-white">Limpar</button>
+                                    </div>
+                                )}
+
+                                {mode === "video" && imageFiles.length === 0 && (
+                                    <p className="text-xs text-blue-400 flex items-center gap-2"><Film className="w-3 h-3" /> Dica: Adicione uma imagem para guiar o vídeo.</p>
+                                )}
                             </div>
+
                             <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={isEditing ? "O que mudar?" : "Descreva sua criação..."} className="w-full bg-[#18181b] border border-gray-700 rounded-xl p-4 text-gray-200 h-32 mb-4" />
-                            <button onClick={handleGenerate} disabled={loading || !prompt || credits < currentCost} className="w-full py-4 rounded-xl font-bold text-lg bg-white text-black hover:bg-gray-200 flex justify-center gap-2 disabled:bg-gray-800 disabled:text-gray-500">{loading ? <div className="animate-spin w-6 h-6 border-2 border-black border-t-transparent rounded-full" /> : <Sparkles className="w-5 h-5 fill-black" />}{loading ? "Processando..." : (credits < currentCost ? "Saldo Insuficiente" : `${isEditing ? 'Editar Imagem' : 'Gerar'} (-${currentCost})`)}</button>
+
+                            <button onClick={handleGenerate} disabled={loading || !prompt || credits < currentCost} className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all shadow-xl ${loading || credits < currentCost ? "bg-gray-800 text-gray-500 cursor-not-allowed" : "bg-white text-black hover:bg-gray-200 hover:scale-[1.01]"}`}>
+                                {loading ? <div className="animate-spin w-6 h-6 border-2 border-black border-t-transparent rounded-full" /> : <Sparkles className="w-5 h-5 fill-black" />}
+                                {loading ? "Processando..." : (credits < currentCost ? "Saldo Insuficiente" : `${isEditing ? 'Editar Imagem' : 'Gerar'} (-${currentCost})`)}
+                            </button>
                         </div>
 
                         {resultUrl && !loading && (
@@ -230,7 +298,17 @@ export default function Home() {
                                     <h3 className="text-gray-400 flex items-center gap-2 font-medium"><Sparkles className="w-4 h-4 text-green-500" /> Resultado Pronto</h3>
                                     <div className="flex flex-wrap gap-2">
                                         {mode === "image" && <button onClick={() => handleTransformToVideo(null)} className="flex items-center gap-1.5 bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-blue-500/20"><ArrowRightCircle className="w-3 h-3" /> Animar</button>}
-                                        {!isMobile && mode === "image" && <button onClick={() => setIsEditorOpen(true)} className="flex items-center gap-1.5 bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"><Edit className="w-3 h-3" /> Editar</button>}
+
+                                        {/* LÓGICA DE EXIBIÇÃO DO EDITOR NO CELULAR */}
+                                        {mode === "image" && (
+                                            <button
+                                                onClick={() => isMobile ? handleMobileEditClick() : setIsEditorOpen(true)}
+                                                className="flex items-center gap-1.5 bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                                            >
+                                                <Edit className="w-3 h-3" /> Editar
+                                            </button>
+                                        )}
+
                                         <button onClick={() => handleShare(resultUrl, mode)} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors"><Share2 className="w-4 h-4" /></button>
                                         <button onClick={() => handleDownload(resultUrl, mode)} className="p-2 bg-white text-black hover:bg-gray-200 rounded-lg transition-colors shadow-lg shadow-white/10"><Download className="w-4 h-4" /></button>
                                     </div>
@@ -244,20 +322,30 @@ export default function Home() {
                 )}
 
                 {mode === "gallery" && (
-                    <div className="w-full bg-[#0f0f10] border border-gray-800 rounded-3xl p-6">
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                            {history.map((item) => (
-                                <div key={item.id} className="aspect-square bg-gray-900 rounded-xl overflow-hidden relative group">
-                                    {item.type === 'image' ? <img src={item.url} className="w-full h-full object-cover" loading="lazy" /> : <video src={item.url} className="w-full h-full object-cover" muted />}
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 p-2">
-                                        <div className="flex gap-2">
-                                            <button onClick={() => handleDownload(item.url, item.type)} className="p-2 bg-white text-black rounded-full hover:scale-110 transition-transform"><Download className="w-4 h-4" /></button>
-                                            {item.type === 'image' && <><button onClick={() => handleTransformToVideo(item.url)} className="p-2 bg-blue-600 text-white rounded-full hover:scale-110 transition-transform"><ArrowRightCircle className="w-4 h-4" /></button>{!isMobile && <button onClick={() => handleEditFromGallery(item.url)} className="p-2 bg-yellow-500 text-black rounded-full hover:scale-110 transition-transform"><Edit className="w-4 h-4" /></button>}</>}
+                    <div className="w-full bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl animate-in fade-in">
+                        <h3 className="text-white font-bold text-xl mb-6 flex items-center gap-2 border-b border-gray-800 pb-4"><Clock className="w-6 h-6 text-yellow-500" /> Galeria Recente</h3>
+                        {history.length === 0 ? (
+                            <div className="text-center py-20 text-gray-500"><p>Nada ainda.</p><button onClick={() => setMode("image")} className="mt-4 text-yellow-500 hover:underline">Começar</button></div>
+                        ) : (
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                {history.map((item) => (
+                                    <div key={item.id} className="aspect-square bg-gray-900 rounded-xl overflow-hidden relative group">
+                                        {item.type === 'image' ? <img src={item.url} className="w-full h-full object-cover" loading="lazy" /> : <video src={item.url} className="w-full h-full object-cover" muted />}
+                                        <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
+                                            <div className="flex gap-2">
+                                                <button onClick={() => handleDownload(item.url, item.type)} className="p-2 bg-white text-black rounded-full hover:scale-110 transition-transform"><Download className="w-4 h-4" /></button>
+                                                {item.type === 'image' && (
+                                                    <>
+                                                        <button onClick={() => handleTransformToVideo(item.url)} className="p-2 bg-blue-600 text-white rounded-full hover:scale-110 transition-transform" title="Animar"><ArrowRightCircle className="w-4 h-4" /></button>
+                                                        <button onClick={() => isMobile ? handleMobileEditClick() : handleEditFromGallery(item.url)} className="p-2 bg-yellow-500 text-black rounded-full hover:scale-110 transition-transform" title="Editar"><Edit className="w-4 h-4" /></button>
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
-                        </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
