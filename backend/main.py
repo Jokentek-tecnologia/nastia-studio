@@ -12,7 +12,7 @@ import time
 import tempfile
 from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip
 import traceback
-from typing import List
+from typing import List, Dict
 from supabase import create_client, Client
 from pydantic import BaseModel
 import stripe
@@ -29,7 +29,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Chave Mestra do Sistema (Sua conta com R$ 7k)
+# Chave Mestra do Sistema
 SYSTEM_API_KEY = os.getenv("GEMINI_API_KEY")
 
 STRIPE_API_KEY = os.getenv("STRIPE_API_KEY")
@@ -45,13 +45,25 @@ app.add_middleware(
 COST_IMAGE = 10
 COST_VIDEO = 50
 
-# --- FUNÇÃO INTELIGENTE: Decide qual chave usar ---
+# --- MODELOS PYDANTIC (DEFINIDOS ANTES DAS ROTAS) ---
+class ChatRequest(BaseModel):
+    history: List[Dict[str, str]]
+    persona: str
+
+class ReferralRequest(BaseModel):
+    user_id: str
+    referral_code: str
+
+class CouponRequest(BaseModel):
+    user_id: str
+    code: str
+
+# --- FUNÇÕES AUXILIARES ---
 def get_user_client_and_cost(user_id: str, default_cost: int):
     """
     Verifica se o usuário tem chave própria.
     Retorna: (client_configurado, custo_final_a_cobrar, dados_usuario)
     """
-    # Busca dados do usuário
     response = supabase.table("profiles").select("custom_api_key, credits, plan_tier").eq("id", user_id).execute()
     if not response.data: 
         raise Exception("Usuário não encontrado.")
@@ -60,14 +72,11 @@ def get_user_client_and_cost(user_id: str, default_cost: int):
     custom_key = user.get("custom_api_key")
 
     if custom_key and len(custom_key) > 10:
-        # USA CHAVE DO USUÁRIO -> CUSTO ZERO
         print(f"Usando chave própria do usuário {user_id}")
         return genai.Client(api_key=custom_key), 0, user
     else:
-        # USA CHAVE DO SISTEMA -> COBRA CRÉDITOS
         if user["credits"] < default_cost:
             raise Exception(f"Saldo insuficiente. Necessário: {default_cost}. Atual: {user['credits']}")
-        
         return genai.Client(api_key=SYSTEM_API_KEY), default_cost, user
 
 def deduct_credits(user_id: str, cost: int, current_credits: int):
@@ -84,6 +93,10 @@ def refund_credits(user_id: str, cost: int):
                 print(f"Reembolso de {cost} efetuado para {user_id}")
         except Exception as e:
             print(f"Erro ao reembolsar: {e}")
+
+def check_and_deduct_credits(user_id: str, cost: int):
+    # Função legada mantida para compatibilidade, mas redirecionando lógica
+    pass 
 
 def upload_to_supabase(file_bytes: bytes, file_ext: str, content_type: str) -> str:
     filename = f"{int(time.time())}_{os.urandom(4).hex()}.{file_ext}"
@@ -154,9 +167,9 @@ def decode_base64_image(image_string):
         raise HTTPException(status_code=400, detail="Erro ao processar imagem: from_image (Formato inválido)")
 
 @app.get("/")
-def read_root(): return {"status": "NastIA V12 (BYOK Edition) Online 🚀"}
+def read_root(): return {"status": "NastIA V12 (Final Fix) Online 🚀"}
 
-# --- ROTA IMAGEM (Híbrida) ---
+# --- ROTA IMAGEM ---
 @app.post("/generate-image")
 async def generate_image(
     prompt: str = Form(...), 
@@ -165,37 +178,19 @@ async def generate_image(
     user_id: str = Form(...),
     aspect_ratio: str = Form("16:9")
 ):
-    # Inicializa variáveis para o bloco finally/except
     final_cost = 0
-    
     try:
-        # 1. Decide qual chave usar e se cobra
         client, final_cost, user_data = get_user_client_and_cost(user_id, COST_IMAGE)
-        
-        # 2. Deduz créditos (Se for chave do sistema)
         deduct_credits(user_id, final_cost, user_data['credits'])
 
-        # 3. Processamento
         try:
             has_input_image = (files and len(files) > 0) or (from_image is not None)
             model = "gemini-2.5-flash-image"
             
-            ratio_map = { 
-                "16:9": "wide 16:9 aspect ratio", 
-                "9:16": "tall 9:16 aspect ratio", 
-                "1:1": "square 1:1 aspect ratio", 
-                "4:3": "classic 4:3", 
-                "3:4": "portrait 3:4", 
-                "21:9": "cinematic 21:9" 
-            }
-            
-            if has_input_image:
-                final_prompt = prompt
-            else:
-                final_prompt = f"{prompt}. Create this image in {ratio_map.get(aspect_ratio, 'wide 16:9')}, high quality."
+            ratio_map = { "16:9": "wide 16:9 aspect ratio", "9:16": "tall 9:16 aspect ratio", "1:1": "square 1:1 aspect ratio", "4:3": "classic 4:3", "3:4": "portrait 3:4", "21:9": "cinematic 21:9" }
+            final_prompt = prompt if has_input_image else f"{prompt}. Create this image in {ratio_map.get(aspect_ratio, 'wide 16:9')}, high quality."
 
             contents_parts = [types.Part.from_text(text=final_prompt)]
-            
             input_img = None
             if files:
                 f_bytes = await files[0].read()
@@ -209,8 +204,7 @@ async def generate_image(
                 contents_parts.append(types.Part.from_bytes(data=buf.getvalue(), mime_type="image/jpeg"))
             
             response = client.models.generate_content(
-                model=model, 
-                contents=[types.Content(role="user", parts=contents_parts)], 
+                model=model, contents=[types.Content(role="user", parts=contents_parts)], 
                 config=types.GenerateContentConfig(response_modalities=["IMAGE"])
             )
 
@@ -227,15 +221,10 @@ async def generate_image(
             raise Exception("Sem imagem retornada.")
 
         except Exception as api_error:
-            # Se deu erro e cobramos, devolve!
             refund_credits(user_id, final_cost)
-            
             err_msg = str(api_error)
-            if "API_KEY_INVALID" in err_msg or "403" in err_msg:
-                raise HTTPException(400, "Sua Chave API do Google é inválida ou expirou. Verifique nas configurações.")
-            if "RESOURCE_EXHAUSTED" in err_msg or "429" in err_msg:
-                raise HTTPException(429, "Cota excedida no Google. Tente novamente mais tarde.")
-                
+            if "API_KEY_INVALID" in err_msg or "403" in err_msg: raise HTTPException(400, "Chave API inválida.")
+            if "RESOURCE_EXHAUSTED" in err_msg or "429" in err_msg: raise HTTPException(429, "Cota excedida.")
             raise api_error
 
     except HTTPException as he: raise he
@@ -243,7 +232,7 @@ async def generate_image(
         print(f"Erro Geral: {e}")
         raise HTTPException(500, str(e))
 
-# --- ROTA VÍDEO (Híbrida) ---
+# --- ROTA VÍDEO ---
 @app.post("/generate-video")
 async def generate_video(
     prompt: str = Form(...), 
@@ -253,10 +242,7 @@ async def generate_video(
 ):
     final_cost = 0
     try:
-        # 1. Decide Chave e Custo
         client, final_cost, user_data = get_user_client_and_cost(user_id, COST_VIDEO)
-        
-        # 2. Deduz
         deduct_credits(user_id, final_cost, user_data['credits'])
 
         try:
@@ -275,15 +261,8 @@ async def generate_video(
             res = operation.result
             if res and res.generated_videos:
                 v_bytes = client.files.download(file=res.generated_videos[0].video)
-                # Verifica se deve aplicar marca d'água (Só aplica se plano for free E user não tiver chave própria)
-                # Se o usuário trouxe a chave, não colocamos marca d'água como 'bônus'
                 should_watermark = user_data['plan_tier'] not in ["plus", "pro", "agency"] and final_cost > 0
-                
-                if should_watermark:
-                    final_bytes = apply_video_watermark(v_bytes, "free")
-                else:
-                    final_bytes = v_bytes
-
+                final_bytes = apply_video_watermark(v_bytes, "free") if should_watermark else v_bytes
                 public_url = upload_to_supabase(final_bytes, "mp4", "video/mp4")
                 save_to_history(user_id, "video", public_url, prompt)
                 return {"video": public_url}
@@ -292,14 +271,9 @@ async def generate_video(
 
         except Exception as api_error:
             refund_credits(user_id, final_cost)
-            
             err_msg = str(api_error)
             if "RESOURCE_EXHAUSTED" in err_msg or "429" in err_msg:
-                if final_cost == 0:
-                    raise HTTPException(429, "Sua cota gratuita pessoal do Google acabou por hoje.")
-                else:
-                    raise HTTPException(429, "Alta demanda nos nossos servidores. Tente em alguns instantes.")
-            
+                raise HTTPException(429, "Sua cota acabou ou o servidor está cheio.")
             raise api_error
 
     except HTTPException as he: raise he
@@ -307,11 +281,7 @@ async def generate_video(
         print(f"Erro Vídeo: {e}")
         raise HTTPException(500, str(e))
 
-# --- RASTREAMENTO (GAMIFICADO) ---
-class ReferralRequest(BaseModel):
-    user_id: str
-    referral_code: str
-
+# --- ROTA DE RASTREAMENTO ---
 @app.post("/track-referral")
 async def track_referral_endpoint(req: ReferralRequest):
     try:
@@ -327,26 +297,14 @@ async def track_referral_endpoint(req: ReferralRequest):
         if referrer.data:
             ref_id = referrer.data[0]['id']
             ref_credits = referrer.data[0]['credits']
-            
-            # Padrinho ganha 100 créditos
             supabase.table("profiles").update({"credits": ref_credits + 100}).eq("id", ref_id).execute()
-            
-            # Afilhado ganha 50 créditos extras
             current_credits = user_data['credits']
-            supabase.table("profiles").update({
-                "referred_by": req.referral_code,
-                "signup_bonus_given": True,
-                "credits": current_credits + 50
-            }).eq("id", req.user_id).execute()
-            
+            supabase.table("profiles").update({"referred_by": req.referral_code, "signup_bonus_given": True, "credits": current_credits + 50}).eq("id", req.user_id).execute()
             return {"status": "success"}
-            
         return {"status": "error", "message": "Invalid code"}
+    except Exception as e: return {"status": "error"}
 
-    except Exception as e:
-        print(f"Referral Error: {e}")
-        return {"status": "error"}
-
+# --- ROTA CHAT ---
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
     try:
@@ -357,6 +315,7 @@ async def chat_endpoint(req: ChatRequest):
         return {"response": res.text or "..."}
     except Exception as e: raise HTTPException(500, str(e))
 
+# --- ROTA CUPOM ---
 @app.post("/redeem-coupon")
 async def redeem_coupon_endpoint(req: CouponRequest):
     try:
@@ -366,46 +325,34 @@ async def redeem_coupon_endpoint(req: CouponRequest):
         if "200" in str(e): return {"message": "Sucesso!"}
         raise HTTPException(400, "Erro cupom")
 
+# --- ROTA MOEDAS ---
 @app.post("/redeem-coins")
 async def redeem_coins_endpoint(user_id: str = Form(...)):
     try:
         user_res = supabase.table("profiles").select("coins, plan_tier").eq("id", user_id).execute()
         if not user_res.data: raise HTTPException(404, "User not found")
-        
         user = user_res.data[0]
-        if (user.get('coins') or 0) < 250:
-            raise HTTPException(400, "Saldo de moedas insuficiente.")
-            
-        supabase.table("profiles").update({
-            "coins": user['coins'] - 250,
-            "plan_tier": "plus",
-            "credits": 1000 
-        }).eq("id", user_id).execute()
+        if (user.get('coins') or 0) < 250: raise HTTPException(400, "Saldo insuficiente.")
+        supabase.table("profiles").update({"coins": user['coins'] - 250, "plan_tier": "plus", "credits": 1000}).eq("id", user_id).execute()
         return {"status": "success", "message": "Plano Plus ativado!"}
-    except Exception as e:
-        print(f"Redeem Error: {e}")
-        raise HTTPException(500, str(e))
+    except Exception as e: raise HTTPException(500, str(e))
 
+# --- WEBHOOK ---
 @app.post("/webhook")
 async def stripe_webhook(request: Request):
     payload = await request.body()
     sig_header = request.headers.get('stripe-signature')
-
-    try:
-        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    try: event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
     except: raise HTTPException(400, "Webhook Error")
 
     if event['type'] == 'checkout.session.completed':
         session = event['data']['object']
         user_id = session.get('client_reference_id')
         amount = session.get('amount_total')
-        
         if user_id:
             to_add = 0; new_plan = None
             if amount == 6900: to_add = 500; new_plan = 'plus'
-            elif amount == 9900: 
-                to_add = 1000
-                if session.get('mode') == 'subscription': new_plan = 'pro'
+            elif amount == 9900: to_add = 1000; new_plan = 'pro'
             
             try:
                 curr = supabase.table("profiles").select("credits, referred_by").eq("id", user_id).execute()
@@ -413,17 +360,12 @@ async def stripe_webhook(request: Request):
                 data = {"credits": u_data['credits'] + to_add}
                 if new_plan: data["plan_tier"] = new_plan
                 supabase.table("profiles").update(data).eq("id", user_id).execute()
-                
                 ref_code = u_data.get('referred_by')
                 if ref_code and new_plan:
                     referrer = supabase.table("profiles").select("id, credits, coins").eq("referral_code", ref_code).execute()
                     if referrer.data:
                         ref_data = referrer.data[0]
                         new_coins = (ref_data.get('coins') or 0) + 10
-                        supabase.table("profiles").update({
-                            "credits": ref_data['credits'] + 100,
-                            "coins": new_coins
-                        }).eq("id", ref_data['id']).execute()
+                        supabase.table("profiles").update({"credits": ref_data['credits'] + 100, "coins": new_coins}).eq("id", ref_data['id']).execute()
             except Exception as e: print(f"Stripe Error: {e}")
-
     return {"status": "success"}
