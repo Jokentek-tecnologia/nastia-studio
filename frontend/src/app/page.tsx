@@ -15,7 +15,7 @@ import Login from "../components/Login";
 import ChatWidget from "../components/ChatWidget";
 import StoreModal from "../components/StoreModal";
 import AdPlayer from "../components/AdPlayer";
-import GamifiedReferral from "../components/GamifiedReferral"; // NOVO COMPONENTE
+import GamifiedReferral from "../components/GamifiedReferral";
 
 // Carregamento dinâmico do editor
 const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
@@ -67,7 +67,7 @@ export default function Home() {
 
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isStoreOpen, setIsStoreOpen] = useState(false);
-    const [isReferralOpen, setIsReferralOpen] = useState(false); // NOVO ESTADO
+    const [isReferralOpen, setIsReferralOpen] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -127,7 +127,6 @@ export default function Home() {
 
     const prepareAd = () => { const list = mode === "image" ? SHORT_ADS : LONG_ADS; setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]); setAdProgress(0); };
 
-    // Função Auxiliar para converter Blob em Base64
     const blobToBase64 = (blob: Blob): Promise<string> => {
         return new Promise((resolve, _) => {
             const reader = new FileReader();
@@ -138,9 +137,7 @@ export default function Home() {
 
     const handleGenerate = async () => {
         if (!prompt) return;
-
         const isEditingContext = mode === "image" && resultUrl && imageFiles.length === 0;
-
         let cost = 5;
         if (mode === "image" && (imageFiles.length > 1 || isEditingContext)) cost = 10;
         if (mode === "video") cost = 20;
@@ -196,7 +193,10 @@ export default function Home() {
 
     const handleAdEnded = () => { if (mode === "image" && pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
     const handleSkipAd = () => { if (pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
-    const copyReferral = () => { navigator.clipboard.writeText(`https://nastia.com.br?ref=${referralCode}`); alert("Copiado!"); }
+
+    // CORREÇÃO AQUI: Link apontando para o Netlify App
+    const copyReferral = () => { navigator.clipboard.writeText(`https://nastia-studio.netlify.app?ref=${referralCode}`); alert("Copiado!"); }
+
     const handleDownload = (url: string, type: string) => { const link = document.createElement("a"); link.href = url; link.download = `NastIA.${type === 'image' ? 'jpg' : 'mp4'}`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
     const handleShare = async (url: string, type: string) => { if (navigator.share) try { const res = await fetch(url); const blob = await res.blob(); await navigator.share({ files: [new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type })] }); } catch (e) { } else alert("Use Baixar."); };
     useEffect(() => { if (loading) { const i = setInterval(() => setAdProgress(o => (o < 95 ? o + 0.5 : o)), 100); return () => clearInterval(i); } }, [loading]);

@@ -23,7 +23,8 @@ export default function GamifiedReferral({ userId, referralCode, onClose }: Prop
     };
 
     const copyCode = () => {
-        navigator.clipboard.writeText(`https://nastia.com.br?ref=${referralCode}`);
+        // CORREÇÃO AQUI: Link apontando para o Netlify App
+        navigator.clipboard.writeText(`https://nastia-studio.netlify.app?ref=${referralCode}`);
         alert("Link copiado! Espalhe para seus amigos.");
     };
 
@@ -98,7 +99,8 @@ export default function GamifiedReferral({ userId, referralCode, onClose }: Prop
                     <div className="bg-black/40 p-4 rounded-xl border border-dashed border-gray-700">
                         <p className="text-xs text-gray-400 mb-2">Seu Link Mágico:</p>
                         <div className="flex gap-2">
-                            <input readOnly value={`nastia.com.br?ref=${referralCode}`} className="flex-1 bg-transparent text-sm text-gray-300 outline-none font-mono" />
+                            {/* CORREÇÃO AQUI: Link Visual apontando para o Netlify App */}
+                            <input readOnly value={`nastia-studio.netlify.app?ref=${referralCode}`} className="flex-1 bg-transparent text-sm text-gray-300 outline-none font-mono" />
                             <button onClick={copyCode} className="text-yellow-500 hover:text-yellow-400 font-bold text-sm flex items-center gap-1"><Copy className="w-4 h-4" /> Copiar</button>
                         </div>
                     </div>
