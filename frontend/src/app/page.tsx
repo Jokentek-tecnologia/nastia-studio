@@ -4,41 +4,35 @@ import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import {
     Sparkles, Image as ImageIcon, Video as VideoIcon,
-    Film, XCircle, Edit, LogOut, Coins, Gift,
+    Film, XCircle, Edit, LogOut, Coins, Gift, Key,
     Share2, Download, Instagram, Globe, MessageCircle, Plus, Copy,
     ArrowRightCircle, Layers, Clock, CheckCircle, Bell, ExternalLink, ChevronDown,
-    X
+    X, MessageSquare, Send, Bot
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { supabase } from "../lib/supabase";
 import Login from "../components/Login";
-import ChatWidget from "../components/ChatWidget";
 import StoreModal from "../components/StoreModal";
 import AdPlayer from "../components/AdPlayer";
 import GamifiedReferral from "../components/GamifiedReferral";
+import ApiKeyModal from "../components/ApiKeyModal";
 
-// Carregamento dinâmico do editor
-const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
-    ssr: false,
-    loading: () => <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 text-white">Carregando Editor...</div>
-});
+const ImageEditor = dynamic(() => import("../components/ImageEditor"), { ssr: false, loading: () => <div className="text-white text-center p-10">Carregando...</div> });
 
-const SHORT_ADS = [
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
-];
-const LONG_ADS = [
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"
-];
+const SHORT_ADS = ["https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"];
+const LONG_ADS = ["https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"];
 
 const ASPECT_RATIOS = [
-    { value: "16:9", label: "Horizontal (16:9) - Youtube" },
-    { value: "9:16", label: "Vertical (9:16) - Stories/Reels" },
-    { value: "1:1", label: "Quadrado (1:1) - Feed" },
-    { value: "4:3", label: "Clássico (4:3)" },
-    { value: "3:4", label: "Retrato (3:4)" },
-    { value: "21:9", label: "Cinema (21:9)" },
+    { value: "16:9", label: "Horizontal (16:9)" }, { value: "9:16", label: "Vertical (9:16)" },
+    { value: "1:1", label: "Quadrado (1:1)" }, { value: "4:3", label: "Clássico (4:3)" },
+    { value: "3:4", label: "Retrato (3:4)" }, { value: "21:9", label: "Cinema (21:9)" },
+];
+
+const PERSONAS = [
+    { id: "geral", name: "Assistente Geral", role: "Assistente Virtual", prompt: "Você é NastIA, uma assistente virtual prestativa e amigável da plataforma NastIA Studio. Ajude o usuário com dúvidas gerais, ideias criativas e suporte. Se o usuário precisar de algo específico como Copywriting ou Design, sugira trocar para a persona especialista." },
+    { id: "copy", name: "Copywriter Pro", role: "Especialista em Textos", prompt: "Você é um Copywriter de elite. Crie textos persuasivos, legendas para instagram, roteiros de vídeo e e-mails de vendas focados em conversão." },
+    { id: "midia", name: "Social Media", role: "Estrategista", prompt: "Você é um estrategista de Social Media. Crie calendários editoriais, ideias de conteúdo viral e estratégias de engajamento." },
+    { id: "prompt", name: "Prompt Engineer", role: "Criador de Imagens", prompt: "Você é especialista em criar Prompts detalhados para IA de imagem (Midjourney/DALL-E). O usuário vai descrever uma ideia simples e você vai transformar em um prompt técnico em inglês, detalhado, com luz, câmera e estilo." }
 ];
 
 export default function Home() {
@@ -48,11 +42,10 @@ export default function Home() {
     const [referralCode, setReferralCode] = useState<string>("");
     const [authLoading, setAuthLoading] = useState(true);
 
-    const [mode, setMode] = useState<"image" | "video" | "gallery">("image");
+    const [mode, setMode] = useState<"image" | "video" | "gallery" | "chat">("chat");
     const [prompt, setPrompt] = useState("");
     const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [isMobile, setIsMobile] = useState(false);
-
     const [aspectRatio, setAspectRatio] = useState<string>("16:9");
 
     const [resultUrl, setResultUrl] = useState<string | null>(null);
@@ -68,6 +61,15 @@ export default function Home() {
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isStoreOpen, setIsStoreOpen] = useState(false);
     const [isReferralOpen, setIsReferralOpen] = useState(false);
+    const [isApiKeyOpen, setIsApiKeyOpen] = useState(false); // NOVO
+    const [hasCustomKey, setHasCustomKey] = useState(false); // NOVO
+
+    // CHAT STATES
+    const [chatHistory, setChatHistory] = useState<{ role: string, parts: string }[]>([]);
+    const [chatInput, setChatInput] = useState("");
+    const [chatLoading, setChatLoading] = useState(false);
+    const [currentPersona, setCurrentPersona] = useState(PERSONAS[0]);
+    const chatEndRef = useRef<HTMLDivElement>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -79,7 +81,12 @@ export default function Home() {
 
     const fetchProfile = async (userId: string) => {
         const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (data) { setCredits(data.credits); setPlan(data.plan_tier); setReferralCode(data.referral_code); }
+        if (data) {
+            setCredits(data.credits);
+            setPlan(data.plan_tier);
+            setReferralCode(data.referral_code);
+            if (data.custom_api_key) setHasCustomKey(true); // VERIFICA A CHAVE
+        }
     };
 
     const fetchHistory = async (userId: string) => {
@@ -108,6 +115,8 @@ export default function Home() {
         return () => subscription.unsubscribe();
     }, []);
 
+    useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory, mode]);
+
     const handleLogout = async () => await supabase.auth.signOut();
     const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files) { const newFiles = Array.from(e.target.files); if (mode === "video") setImageFiles([newFiles[0]]); else setImageFiles(prev => [...prev, ...newFiles].slice(0, 8)); } };
     const removeImage = (index: number) => { setImageFiles(prev => prev.filter((_, i) => i !== index)); };
@@ -123,7 +132,7 @@ export default function Home() {
     };
 
     const handleEditFromGallery = async (url: string) => { setResultUrl(url); setIsEditorOpen(true); }
-    const handleMobileEditClick = () => { alert("⚠️ Para adicionar textos e elementos gráficos, use o editor no computador.\n\nNo celular, você pode editar pedindo para a IA no chat: 'Edite a imagem para...'"); };
+    const handleMobileEditClick = () => { alert("Para editar, use o chat: 'Edite a imagem para...'"); };
 
     const prepareAd = () => { const list = mode === "image" ? SHORT_ADS : LONG_ADS; setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]); setAdProgress(0); };
 
@@ -140,63 +149,57 @@ export default function Home() {
         const isEditingContext = mode === "image" && resultUrl && imageFiles.length === 0;
         let cost = 5;
         if (mode === "image" && (imageFiles.length > 1 || isEditingContext)) cost = 10;
-        if (mode === "video") cost = 20;
+        if (mode === "video") cost = 50; // NOVO VALOR
 
-        if (credits < cost) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
+        // SE TIVER CHAVE, CUSTO É ZERO
+        if (hasCustomKey) cost = 0;
 
-        prepareAd();
-        setLoading(true);
-        const previousResult = resultUrl;
-        setResultUrl(null);
-        setPendingResult(null);
+        if (credits < cost && !hasCustomKey) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
 
-        const formData = new FormData();
-        formData.append("user_id", session.user.id);
-        formData.append("aspect_ratio", aspectRatio);
+        prepareAd(); setLoading(true); const previousResult = resultUrl; setResultUrl(null); setPendingResult(null);
+        const formData = new FormData(); formData.append("user_id", session.user.id); formData.append("aspect_ratio", aspectRatio);
 
-        if (isEditingContext) formData.append("prompt", `EDIT IMAGE: ${prompt}`);
-        else formData.append("prompt", prompt);
+        if (isEditingContext) formData.append("prompt", `EDIT IMAGE: ${prompt}`); else formData.append("prompt", prompt);
 
         try {
             if (mode === "image") {
-                if (imageFiles.length > 0) {
-                    imageFiles.forEach(file => formData.append("files", file));
-                } else if (previousResult && isEditingContext) {
-                    try {
-                        const res = await fetch(previousResult);
-                        const blob = await res.blob();
-                        const base64Data = await blobToBase64(blob);
-                        formData.append("from_image", base64Data);
-                    } catch (e) {
-                        console.error("Erro ao preparar imagem de contexto", e);
-                    }
+                if (imageFiles.length > 0) imageFiles.forEach(file => formData.append("files", file));
+                else if (previousResult && isEditingContext) {
+                    try { const res = await fetch(previousResult); const blob = await res.blob(); const base64Data = await blobToBase64(blob); formData.append("from_image", base64Data); } catch (e) { }
                 }
-            } else {
-                if (imageFiles.length > 0) formData.append("file_start", imageFiles[0]);
-            }
+            } else { if (imageFiles.length > 0) formData.append("file_start", imageFiles[0]); }
 
             const endpoint = mode === "image" ? `${process.env.NEXT_PUBLIC_API_URL}/generate-image` : `${process.env.NEXT_PUBLIC_API_URL}/generate-video`;
             const res = await axios.post(endpoint, formData, { headers: { "Content-Type": "multipart/form-data" } });
-
-            fetchProfile(session.user.id);
-            fetchHistory(session.user.id);
-
+            fetchProfile(session.user.id); fetchHistory(session.user.id);
             const url = res.data.image || res.data.video;
             if (mode === "video") { setResultUrl(url); setLoading(false); } else { setPendingResult(url); }
+        } catch (error: any) { alert(error.response?.data?.detail || "Erro."); setLoading(false); if (mode === "image") setResultUrl(previousResult); }
+    };
 
-        } catch (error: any) {
-            alert(error.response?.data?.detail || "Erro ao processar.");
-            setLoading(false);
-            if (mode === "image") setResultUrl(previousResult);
+    const handleChatSend = async () => {
+        if (!chatInput.trim()) return;
+        const userMsg = { role: "user", parts: chatInput };
+        setChatHistory(prev => [...prev, userMsg]);
+        setChatInput("");
+        setChatLoading(true);
+
+        try {
+            const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/chat`, {
+                history: chatHistory.concat(userMsg),
+                persona: currentPersona.prompt
+            });
+            setChatHistory(prev => [...prev, { role: "model", parts: res.data.response }]);
+        } catch (e) {
+            setChatHistory(prev => [...prev, { role: "model", parts: "Erro de conexão." }]);
+        } finally {
+            setChatLoading(false);
         }
     };
 
     const handleAdEnded = () => { if (mode === "image" && pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
     const handleSkipAd = () => { if (pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
-
-    // CORREÇÃO AQUI: Link apontando para o Netlify App
     const copyReferral = () => { navigator.clipboard.writeText(`https://nastia-studio.netlify.app?ref=${referralCode}`); alert("Copiado!"); }
-
     const handleDownload = (url: string, type: string) => { const link = document.createElement("a"); link.href = url; link.download = `NastIA.${type === 'image' ? 'jpg' : 'mp4'}`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
     const handleShare = async (url: string, type: string) => { if (navigator.share) try { const res = await fetch(url); const blob = await res.blob(); await navigator.share({ files: [new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type })] }); } catch (e) { } else alert("Use Baixar."); };
     useEffect(() => { if (loading) { const i = setInterval(() => setAdProgress(o => (o < 95 ? o + 0.5 : o)), 100); return () => clearInterval(i); } }, [loading]);
@@ -207,8 +210,10 @@ export default function Home() {
     if (authLoading) return <div className="min-h-screen bg-black flex items-center justify-center text-white"><div className="animate-spin w-8 h-8 border-4 border-yellow-500 border-t-transparent rounded-full"></div></div>;
     if (!session) return <Login />;
 
+    // CUSTO DINÂMICO PARA EXIBIÇÃO
     const isEditing = mode === "image" && resultUrl && imageFiles.length === 0;
-    const currentCost = mode === "image" ? (imageFiles.length > 1 || isEditing ? 10 : 5) : 20;
+    let currentCost = mode === "image" ? (imageFiles.length > 1 || isEditing ? 10 : 10) : 50;
+    if (hasCustomKey) currentCost = 0;
 
     return (
         <main className="min-h-screen bg-[#050505] text-white flex flex-col font-sans relative overflow-x-hidden">
@@ -223,13 +228,23 @@ export default function Home() {
                 </div>
 
                 <div className="flex items-center gap-4">
-                    {/* BOTÃO GAMIFICADO DE INDICAÇÃO */}
+
+                    {/* BOTÃO CHAVE API (NOVO) */}
+                    <button
+                        onClick={() => setIsApiKeyOpen(true)}
+                        className={`hidden md:flex items-center gap-2 border px-3 py-1.5 rounded-full hover:scale-105 transition-transform ${hasCustomKey ? "bg-green-900/30 border-green-500/50 text-green-400" : "bg-gray-800 border-gray-600 text-gray-400"}`}
+                        title={hasCustomKey ? "Modo Turbo Ativo (Grátis)" : "Ativar Modo Grátis"}
+                    >
+                        <Key className="w-4 h-4" />
+                        <span className="text-xs font-bold">{hasCustomKey ? "Turbo Ativo" : "Usar Grátis"}</span>
+                    </button>
+
                     <button
                         onClick={() => setIsReferralOpen(true)}
-                        className="hidden md:flex items-center gap-2 bg-gradient-to-r from-purple-900 to-pink-900 border border-purple-500/30 px-3 py-1.5 rounded-full hover:scale-105 transition-transform group mr-2"
+                        className="flex items-center gap-2 bg-gradient-to-r from-purple-900 to-pink-900 border border-purple-500/30 px-3 py-1.5 rounded-full hover:scale-105 transition-transform group mr-2"
                     >
                         <Gift className="w-4 h-4 text-pink-400 group-hover:animate-bounce" />
-                        <span className="text-xs font-bold text-pink-100">Ganhe Prêmios</span>
+                        <span className="text-xs font-bold text-pink-100 hidden md:inline">Ganhe Prêmios</span>
                     </button>
 
                     <div className="relative">
@@ -238,22 +253,20 @@ export default function Home() {
                             {notifications.length > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#050505]"></span>}
                         </button>
                         {showNotifications && (
-                            <div className="fixed top-20 left-4 right-4 z-50 sm:absolute sm:top-full sm:right-0 sm:left-auto sm:w-80 bg-[#18181b] border border-gray-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2">
-                                <div className="p-3 border-b border-gray-800 text-xs font-bold text-gray-400 flex justify-between">
+                            <div className="fixed top-20 left-4 right-4 z-50 sm:absolute sm:top-full sm:right-0 sm:left-auto sm:w-80 bg-[#18181b] border border-gray-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2" onClick={() => setShowNotifications(false)}>
+                                <div className="p-3 border-b border-gray-800 text-xs font-bold text-gray-400 flex justify-between" onClick={(e) => e.stopPropagation()}>
                                     <span>Notificações</span>
                                     <button onClick={() => setShowNotifications(false)}><X className="w-4 h-4" /></button>
                                 </div>
-                                {notifications.length === 0 ? (
-                                    <div className="p-4 text-center text-xs text-gray-600">Nada por aqui.</div>
-                                ) : (
-                                    notifications.map(n => (
+                                <div className="bg-[#18181b]" onClick={(e) => e.stopPropagation()}>
+                                    {notifications.length === 0 ? <div className="p-4 text-center text-xs text-gray-600">Nada por aqui.</div> : notifications.map(n => (
                                         <div key={n.id} className="p-3 border-b border-gray-800 hover:bg-gray-800/50">
                                             <h4 className="text-sm font-bold text-white mb-1">{n.title}</h4>
                                             <p className="text-xs text-gray-400 leading-relaxed">{n.message}</p>
                                             {n.link && <a href={n.link} target="_blank" className="text-[10px] text-yellow-500 hover:underline mt-2 block flex items-center gap-1">Ver mais <ExternalLink className="w-3 h-3" /></a>}
                                         </div>
-                                    ))
-                                )}
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -273,13 +286,14 @@ export default function Home() {
 
             {isEditorOpen && resultUrl && <ImageEditor imageUrl={resultUrl} onClose={() => setIsEditorOpen(false)} />}
             {isStoreOpen && <StoreModal userId={session.user.id} currentPlan={plan} referralCode={referralCode} onClose={() => setIsStoreOpen(false)} onUpdate={() => fetchProfile(session.user.id)} />}
+            {isReferralOpen && referralCode && <GamifiedReferral userId={session.user.id} referralCode={referralCode} onClose={() => setIsReferralOpen(false)} />}
 
-            {/* POPUP DE INDICAÇÃO */}
-            {isReferralOpen && referralCode && (
-                <GamifiedReferral
+            {/* MODAL API KEY */}
+            {isApiKeyOpen && (
+                <ApiKeyModal
                     userId={session.user.id}
-                    referralCode={referralCode}
-                    onClose={() => setIsReferralOpen(false)}
+                    onClose={() => setIsApiKeyOpen(false)}
+                    onSuccess={() => { setHasCustomKey(true); fetchProfile(session.user.id); }}
                 />
             )}
 
@@ -303,13 +317,71 @@ export default function Home() {
 
             <div className="flex-1 flex flex-col items-center justify-center p-4 py-10 w-full max-w-5xl mx-auto space-y-8">
 
-                <div className="flex w-full bg-gray-900 p-1.5 rounded-2xl border border-gray-800">
-                    <button onClick={() => { setMode("image"); setImageFiles([]); }} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "image" ? "bg-gray-800 text-white" : "text-gray-500"}`}><ImageIcon className="w-5 h-5" /> Imagem</button>
-                    <button onClick={() => { setMode("video"); setImageFiles([]); setAspectRatio("16:9"); }} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "video" ? "bg-blue-900/30 text-blue-200" : "text-gray-500"}`}><VideoIcon className="w-5 h-5" /> Vídeo</button>
-                    <button onClick={() => { setMode("gallery"); }} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "gallery" ? "bg-yellow-900/30 text-yellow-200" : "text-gray-500"}`}><Clock className="w-5 h-5" /> Galeria</button>
+                <div className="flex w-full bg-gray-900 p-1.5 rounded-2xl border border-gray-800 overflow-x-auto">
+                    <button onClick={() => setMode("chat")} className={`flex-1 min-w-[80px] py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "chat" ? "bg-purple-900/30 text-purple-200 border border-purple-500/30" : "text-gray-500"}`}><MessageSquare className="w-5 h-5" /> Chat</button>
+                    <button onClick={() => { setMode("image"); setImageFiles([]); }} className={`flex-1 min-w-[80px] py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "image" ? "bg-gray-800 text-white" : "text-gray-500"}`}><ImageIcon className="w-5 h-5" /> Imagem</button>
+                    <button onClick={() => { setMode("video"); setImageFiles([]); setAspectRatio("16:9"); }} className={`flex-1 min-w-[80px] py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "video" ? "bg-blue-900/30 text-blue-200" : "text-gray-500"}`}><VideoIcon className="w-5 h-5" /> Vídeo</button>
+                    <button onClick={() => { setMode("gallery"); }} className={`flex-1 min-w-[80px] py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${mode === "gallery" ? "bg-yellow-900/30 text-yellow-200" : "text-gray-500"}`}><Clock className="w-5 h-5" /> Galeria</button>
                 </div>
 
-                {mode !== "gallery" && (
+                {mode === "chat" && (
+                    <div className="w-full flex flex-col md:flex-row gap-4 h-[70vh] md:h-[600px]">
+                        <div className="w-full md:w-1/3 bg-[#0f0f10] border border-gray-800 rounded-3xl p-4 overflow-y-auto">
+                            <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">Especialistas</h3>
+                            <div className="space-y-2">
+                                {PERSONAS.map(persona => (
+                                    <div
+                                        key={persona.id}
+                                        onClick={() => { setCurrentPersona(persona); setChatHistory([]); }}
+                                        className={`p-3 rounded-xl cursor-pointer border transition-all ${currentPersona.id === persona.id ? "bg-purple-900/20 border-purple-500/50" : "bg-gray-900/50 border-transparent hover:bg-gray-800"}`}
+                                    >
+                                        <div className="font-bold text-sm text-white">{persona.name}</div>
+                                        <div className="text-[10px] text-gray-500">{persona.role}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex-1 bg-[#0f0f10] border border-gray-800 rounded-3xl flex flex-col overflow-hidden relative">
+                            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                {chatHistory.length === 0 && (
+                                    <div className="h-full flex flex-col items-center justify-center text-gray-600 text-center p-6">
+                                        <Bot className="w-12 h-12 mb-4 text-purple-900/50" />
+                                        <p className="text-sm">Olá! Eu sou {currentPersona.name}.</p>
+                                        <p className="text-xs mt-1 max-w-xs">{currentPersona.prompt.split('.')[1] || "Como posso ajudar?"}</p>
+                                    </div>
+                                )}
+                                {chatHistory.map((msg, i) => (
+                                    <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                                        <div className={`max-w-[85%] rounded-2xl p-3 text-sm ${msg.role === "user" ? "bg-white text-black" : "bg-gray-800 text-gray-200"}`}>
+                                            {msg.role !== 'user' && <div className="text-[10px] text-purple-400 font-bold mb-1">{currentPersona.name}</div>}
+                                            {msg.parts}
+                                        </div>
+                                    </div>
+                                ))}
+                                {chatLoading && <div className="text-gray-500 text-xs animate-pulse ml-4">Digitando...</div>}
+                                <div ref={chatEndRef} />
+                            </div>
+
+                            <div className="p-4 border-t border-gray-800 bg-[#121214]">
+                                <div className="flex gap-2">
+                                    <input
+                                        value={chatInput}
+                                        onChange={(e) => setChatInput(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleChatSend()}
+                                        placeholder={`Perguntar para ${currentPersona.name}...`}
+                                        className="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white focus:border-purple-500 outline-none"
+                                    />
+                                    <button onClick={handleChatSend} disabled={chatLoading} className="bg-purple-600 hover:bg-purple-500 text-white p-3 rounded-xl transition-colors disabled:opacity-50">
+                                        <Send className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {(mode === "image" || mode === "video") && (
                     <>
                         <div className="w-full bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
                             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-500 via-orange-500 to-purple-500 opacity-20 group-hover:opacity-50 transition-opacity"></div>
@@ -363,9 +435,9 @@ export default function Home() {
 
                             <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={isEditing ? "O que mudar?" : "Descreva sua criação..."} className="w-full bg-[#18181b] border border-gray-700 rounded-xl p-4 text-gray-200 h-32 mb-4" />
 
-                            <button onClick={handleGenerate} disabled={loading || !prompt || credits < currentCost} className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all shadow-xl ${loading || credits < currentCost ? "bg-gray-800 text-gray-500 cursor-not-allowed" : "bg-white text-black hover:bg-gray-200 hover:scale-[1.01]"}`}>
+                            <button onClick={handleGenerate} disabled={loading || !prompt || (credits < currentCost && !hasCustomKey)} className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all shadow-xl ${loading || (credits < currentCost && !hasCustomKey) ? "bg-gray-800 text-gray-500 cursor-not-allowed" : "bg-white text-black hover:bg-gray-200 hover:scale-[1.01]"}`}>
                                 {loading ? <div className="animate-spin w-6 h-6 border-2 border-black border-t-transparent rounded-full" /> : <Sparkles className="w-5 h-5 fill-black" />}
-                                {loading ? "Processando..." : (credits < currentCost ? "Saldo Insuficiente" : `${isEditing ? 'Editar Imagem' : 'Gerar'} (-${currentCost})`)}
+                                {loading ? "Processando..." : (hasCustomKey ? "Gerar Grátis (Modo Turbo) ⚡" : (credits < currentCost ? "Saldo Insuficiente" : `${isEditing ? 'Editar Imagem' : 'Gerar'} (-${currentCost})`))}
                             </button>
                         </div>
 
@@ -437,7 +509,6 @@ export default function Home() {
                     {referralCode && <div onClick={copyReferral} className="flex items-center gap-2 bg-gray-900 px-3 py-1 rounded-full border border-gray-800 cursor-pointer hover:border-yellow-500/50 transition-colors group"><Gift className="w-3 h-3 text-yellow-500" /><span className="text-xs group-hover:text-white">Indique e Ganhe: {referralCode}</span><Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" /></div>}
                 </div>
             </footer>
-            <ChatWidget onApplyPrompt={(text) => { setPrompt(text); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
         </main>
     );
 }

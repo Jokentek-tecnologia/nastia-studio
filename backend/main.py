@@ -7,12 +7,12 @@ from dotenv import load_dotenv
 from pathlib import Path
 import base64
 import io
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 import time
 import tempfile
 from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip
 import traceback
-from typing import List, Dict, Optional
+from typing import List
 from supabase import create_client, Client
 from pydantic import BaseModel
 import stripe
@@ -29,8 +29,8 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-api_key = os.getenv("GEMINI_API_KEY")
-client = genai.Client(api_key=api_key)
+# Chave Mestra do Sistema (Sua conta com R$ 7k)
+SYSTEM_API_KEY = os.getenv("GEMINI_API_KEY")
 
 STRIPE_API_KEY = os.getenv("STRIPE_API_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
@@ -41,15 +41,49 @@ app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
 
-# --- FUNÇÕES AUXILIARES ---
-def check_and_deduct_credits(user_id: str, cost: int):
-    response = supabase.table("profiles").select("credits, plan_tier").eq("id", user_id).execute()
-    if not response.data: raise Exception("Usuário não encontrado.")
+# --- PREÇOS DEFINIDOS ---
+COST_IMAGE = 10
+COST_VIDEO = 50
+
+# --- FUNÇÃO INTELIGENTE: Decide qual chave usar ---
+def get_user_client_and_cost(user_id: str, default_cost: int):
+    """
+    Verifica se o usuário tem chave própria.
+    Retorna: (client_configurado, custo_final_a_cobrar, dados_usuario)
+    """
+    # Busca dados do usuário
+    response = supabase.table("profiles").select("custom_api_key, credits, plan_tier").eq("id", user_id).execute()
+    if not response.data: 
+        raise Exception("Usuário não encontrado.")
+    
     user = response.data[0]
-    if user["credits"] < cost:
-        raise Exception(f"Saldo insuficiente. Necessário: {cost}. Atual: {user['credits']}")
-    supabase.table("profiles").update({"credits": user["credits"] - cost}).eq("id", user_id).execute()
-    return user["plan_tier"]
+    custom_key = user.get("custom_api_key")
+
+    if custom_key and len(custom_key) > 10:
+        # USA CHAVE DO USUÁRIO -> CUSTO ZERO
+        print(f"Usando chave própria do usuário {user_id}")
+        return genai.Client(api_key=custom_key), 0, user
+    else:
+        # USA CHAVE DO SISTEMA -> COBRA CRÉDITOS
+        if user["credits"] < default_cost:
+            raise Exception(f"Saldo insuficiente. Necessário: {default_cost}. Atual: {user['credits']}")
+        
+        return genai.Client(api_key=SYSTEM_API_KEY), default_cost, user
+
+def deduct_credits(user_id: str, cost: int, current_credits: int):
+    if cost > 0:
+        supabase.table("profiles").update({"credits": current_credits - cost}).eq("id", user_id).execute()
+
+def refund_credits(user_id: str, cost: int):
+    """Devolve os créditos se der erro no Google"""
+    if cost > 0:
+        try:
+            curr = supabase.table("profiles").select("credits").eq("id", user_id).execute()
+            if curr.data:
+                supabase.table("profiles").update({"credits": curr.data[0]['credits'] + cost}).eq("id", user_id).execute()
+                print(f"Reembolso de {cost} efetuado para {user_id}")
+        except Exception as e:
+            print(f"Erro ao reembolsar: {e}")
 
 def upload_to_supabase(file_bytes: bytes, file_ext: str, content_type: str) -> str:
     filename = f"{int(time.time())}_{os.urandom(4).hex()}.{file_ext}"
@@ -66,13 +100,10 @@ def save_to_history(user_id: str, type: str, url: str, prompt: str):
     except: pass
 
 def apply_watermark(img: Image.Image, plan: str) -> Image.Image:
-    # PLANOS PAGOS NÃO TEM MARCA D'ÁGUA
     if plan in ["plus", "pro", "agency", "criação"]: return img.convert("RGB")
-    
     base = img.convert("RGBA")
     w, h = base.size
     logo_path = Path(__file__).parent / "logo.png"
-    
     if logo_path.exists():
         try:
             logo = Image.open(logo_path).convert("RGBA")
@@ -86,13 +117,11 @@ def apply_watermark(img: Image.Image, plan: str) -> Image.Image:
 
 def apply_video_watermark(v_bytes: bytes, plan: str) -> bytes:
     if plan in ["plus", "pro", "agency", "criação"]: return v_bytes
-    
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
         tmp.write(v_bytes)
         path = tmp.name
     out = path.replace(".mp4", "_wm.mp4")
     lp = Path(__file__).parent / "logo.png"
-    
     try:
         vid = VideoFileClip(path)
         if lp.exists():
@@ -114,7 +143,6 @@ def apply_video_watermark(v_bytes: bytes, plan: str) -> bytes:
         except: pass
 
 def decode_base64_image(image_string):
-    """Decodifica imagem base64 de forma segura."""
     if not image_string: return None
     try:
         if "base64," in image_string:
@@ -126,9 +154,9 @@ def decode_base64_image(image_string):
         raise HTTPException(status_code=400, detail="Erro ao processar imagem: from_image (Formato inválido)")
 
 @app.get("/")
-def read_root(): return {"status": "NastIA V9 (Final Launch) Online 🚀"}
+def read_root(): return {"status": "NastIA V12 (BYOK Edition) Online 🚀"}
 
-# --- ROTA IMAGEM (COM SUPORTE TOTAL A FORMATOS) ---
+# --- ROTA IMAGEM (Híbrida) ---
 @app.post("/generate-image")
 async def generate_image(
     prompt: str = Form(...), 
@@ -137,73 +165,85 @@ async def generate_image(
     user_id: str = Form(...),
     aspect_ratio: str = Form("16:9")
 ):
+    # Inicializa variáveis para o bloco finally/except
+    final_cost = 0
+    
     try:
-        has_input_image = (files and len(files) > 0) or (from_image is not None)
-        cost = 10 if has_input_image else 5
-        user_plan = check_and_deduct_credits(user_id, cost)
+        # 1. Decide qual chave usar e se cobra
+        client, final_cost, user_data = get_user_client_and_cost(user_id, COST_IMAGE)
         
-        model = "gemini-2.5-flash-image"
-        
-        ratio_map = {
-            "16:9": "wide 16:9 aspect ratio",
-            "9:16": "tall 9:16 aspect ratio",
-            "1:1":  "square 1:1 aspect ratio",
-            "4:3":  "classic 4:3 aspect ratio",
-            "3:4":  "portrait 3:4 aspect ratio",
-            "21:9": "cinematic 21:9 aspect ratio"
-        }
+        # 2. Deduz créditos (Se for chave do sistema)
+        deduct_credits(user_id, final_cost, user_data['credits'])
 
-        if not has_input_image:
-            ratio_text = ratio_map.get(aspect_ratio, "wide 16:9 aspect ratio")
-            final_prompt = f"{prompt}. Create this image in {ratio_text}, high quality, realistic."
-        else:
-            final_prompt = prompt
+        # 3. Processamento
+        try:
+            has_input_image = (files and len(files) > 0) or (from_image is not None)
+            model = "gemini-2.5-flash-image"
+            
+            ratio_map = { 
+                "16:9": "wide 16:9 aspect ratio", 
+                "9:16": "tall 9:16 aspect ratio", 
+                "1:1": "square 1:1 aspect ratio", 
+                "4:3": "classic 4:3", 
+                "3:4": "portrait 3:4", 
+                "21:9": "cinematic 21:9" 
+            }
+            
+            if has_input_image:
+                final_prompt = prompt
+            else:
+                final_prompt = f"{prompt}. Create this image in {ratio_map.get(aspect_ratio, 'wide 16:9')}, high quality."
 
-        contents_parts = [types.Part.from_text(text=final_prompt)]
-        input_img = None
-        
-        if files:
-            for file in files:
-                f_bytes = await file.read()
+            contents_parts = [types.Part.from_text(text=final_prompt)]
+            
+            input_img = None
+            if files:
+                f_bytes = await files[0].read()
                 input_img = Image.open(io.BytesIO(f_bytes))
-        elif from_image:
-            input_img = decode_base64_image(from_image)
+            elif from_image:
+                input_img = decode_base64_image(from_image)
 
-        if input_img:
-            if input_img.mode != 'RGB':
-                input_img = input_img.convert('RGB')
-            buf = io.BytesIO()
-            input_img.save(buf, format="JPEG")
-            img_bytes = buf.getvalue()
-            contents_parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
-        
-        contents = [types.Content(role="user", parts=contents_parts)]
-        generation_config = types.GenerateContentConfig(response_modalities=["IMAGE"])
-        
-        response = client.models.generate_content(
-            model=model, 
-            contents=contents, 
-            config=generation_config
-        )
+            if input_img:
+                if input_img.mode != 'RGB': input_img = input_img.convert('RGB')
+                buf = io.BytesIO(); input_img.save(buf, format="JPEG"); 
+                contents_parts.append(types.Part.from_bytes(data=buf.getvalue(), mime_type="image/jpeg"))
+            
+            response = client.models.generate_content(
+                model=model, 
+                contents=[types.Content(role="user", parts=contents_parts)], 
+                config=types.GenerateContentConfig(response_modalities=["IMAGE"])
+            )
 
-        if response.candidates and response.candidates[0].content.parts:
-            for part in response.candidates[0].content.parts:
+            if response.candidates and response.candidates[0].content.parts:
+                part = response.candidates[0].content.parts[0]
                 if part.inline_data:
                     gen_img = Image.open(io.BytesIO(part.inline_data.data))
-                    final_img = apply_watermark(gen_img, user_plan)
-                    buf = io.BytesIO()
-                    final_img.save(buf, format="JPEG", quality=95)
+                    final_img = apply_watermark(gen_img, user_data['plan_tier'])
+                    buf = io.BytesIO(); final_img.save(buf, format="JPEG", quality=95)
                     public_url = upload_to_supabase(buf.getvalue(), "jpg", "image/jpeg")
                     save_to_history(user_id, "image", public_url, prompt)
                     return {"image": public_url}
-                    
-        raise HTTPException(500, "O Google não retornou imagem.")
+            
+            raise Exception("Sem imagem retornada.")
+
+        except Exception as api_error:
+            # Se deu erro e cobramos, devolve!
+            refund_credits(user_id, final_cost)
+            
+            err_msg = str(api_error)
+            if "API_KEY_INVALID" in err_msg or "403" in err_msg:
+                raise HTTPException(400, "Sua Chave API do Google é inválida ou expirou. Verifique nas configurações.")
+            if "RESOURCE_EXHAUSTED" in err_msg or "429" in err_msg:
+                raise HTTPException(429, "Cota excedida no Google. Tente novamente mais tarde.")
+                
+            raise api_error
+
+    except HTTPException as he: raise he
     except Exception as e:
-        print(f"Erro Geral Imagem: {e}")
-        traceback.print_exc() 
+        print(f"Erro Geral: {e}")
         raise HTTPException(500, str(e))
 
-# --- ROTA VÍDEO ---
+# --- ROTA VÍDEO (Híbrida) ---
 @app.post("/generate-video")
 async def generate_video(
     prompt: str = Form(...), 
@@ -211,70 +251,63 @@ async def generate_video(
     user_id: str = Form(...),
     aspect_ratio: str = Form("16:9")
 ):
+    final_cost = 0
     try:
-        cost = 20
-        user_plan = check_and_deduct_credits(user_id, cost)
-        model = "veo-3.1-generate-preview"
+        # 1. Decide Chave e Custo
+        client, final_cost, user_data = get_user_client_and_cost(user_id, COST_VIDEO)
         
-        veo_params = {
-            "model": model, 
-            "prompt": prompt, 
-            "config": types.GenerateVideosConfig(
-                number_of_videos=1,
-                aspect_ratio=aspect_ratio 
-            )
-        }
+        # 2. Deduz
+        deduct_credits(user_id, final_cost, user_data['credits'])
 
-        is_image_animation = False
-        if file_start:
-            s_bytes = await file_start.read()
-            mime = file_start.content_type or "image/jpeg"
-            veo_params["image"] = types.Image(image_bytes=s_bytes, mime_type=mime)
-            is_image_animation = True
+        try:
+            model = "veo-3.1-generate-preview"
+            veo_params = { "model": model, "prompt": prompt, "config": types.GenerateVideosConfig(number_of_videos=1, aspect_ratio=aspect_ratio) }
 
-        operation = client.models.generate_videos(**veo_params)
-        while not operation.done:
-            time.sleep(5)
-            operation = client.operations.get(operation)
+            if file_start:
+                s_bytes = await file_start.read()
+                veo_params["image"] = types.Image(image_bytes=s_bytes, mime_type=file_start.content_type or "image/jpeg")
 
-        res = operation.result
-        if res and res.generated_videos:
-            v_bytes = client.files.download(file=res.generated_videos[0].video)
-            if is_image_animation or user_plan in ["plus", "pro"]:
-                final_bytes = v_bytes
-            else:
-                final_bytes = apply_video_watermark(v_bytes, user_plan)
-            public_url = upload_to_supabase(final_bytes, "mp4", "video/mp4")
-            save_to_history(user_id, "video", public_url, prompt)
-            return {"video": public_url}
-        raise HTTPException(500, "O Google não retornou vídeo.")
+            operation = client.models.generate_videos(**veo_params)
+            while not operation.done:
+                time.sleep(5)
+                operation = client.operations.get(operation)
+
+            res = operation.result
+            if res and res.generated_videos:
+                v_bytes = client.files.download(file=res.generated_videos[0].video)
+                # Verifica se deve aplicar marca d'água (Só aplica se plano for free E user não tiver chave própria)
+                # Se o usuário trouxe a chave, não colocamos marca d'água como 'bônus'
+                should_watermark = user_data['plan_tier'] not in ["plus", "pro", "agency"] and final_cost > 0
+                
+                if should_watermark:
+                    final_bytes = apply_video_watermark(v_bytes, "free")
+                else:
+                    final_bytes = v_bytes
+
+                public_url = upload_to_supabase(final_bytes, "mp4", "video/mp4")
+                save_to_history(user_id, "video", public_url, prompt)
+                return {"video": public_url}
+            
+            raise Exception("Sem vídeo retornado.")
+
+        except Exception as api_error:
+            refund_credits(user_id, final_cost)
+            
+            err_msg = str(api_error)
+            if "RESOURCE_EXHAUSTED" in err_msg or "429" in err_msg:
+                if final_cost == 0:
+                    raise HTTPException(429, "Sua cota gratuita pessoal do Google acabou por hoje.")
+                else:
+                    raise HTTPException(429, "Alta demanda nos nossos servidores. Tente em alguns instantes.")
+            
+            raise api_error
+
+    except HTTPException as he: raise he
     except Exception as e:
         print(f"Erro Vídeo: {e}")
-        raise HTTPException(status_code=402 if "Saldo" in str(e) else 500, detail=str(e))
-
-# --- NOVA ROTA: RESGATAR MOEDAS POR PLANO PLUS ---
-@app.post("/redeem-coins")
-async def redeem_coins_endpoint(user_id: str = Form(...)):
-    try:
-        user_res = supabase.table("profiles").select("coins, plan_tier").eq("id", user_id).execute()
-        if not user_res.data: raise HTTPException(404, "User not found")
-        
-        user = user_res.data[0]
-        if (user.get('coins') or 0) < 250:
-            raise HTTPException(400, "Saldo de moedas insuficiente.")
-            
-        supabase.table("profiles").update({
-            "coins": user['coins'] - 250,
-            "plan_tier": "plus",
-            "credits": 1000 # Bônus de boas-vindas ao Plus
-        }).eq("id", user_id).execute()
-        
-        return {"status": "success", "message": "Plano Plus ativado!"}
-    except Exception as e:
-        print(f"Redeem Error: {e}")
         raise HTTPException(500, str(e))
 
-# --- ROTA DE RASTREAMENTO (GAMIFICADA) ---
+# --- RASTREAMENTO (GAMIFICADO) ---
 class ReferralRequest(BaseModel):
     user_id: str
     referral_code: str
@@ -314,8 +347,6 @@ async def track_referral_endpoint(req: ReferralRequest):
         print(f"Referral Error: {e}")
         return {"status": "error"}
 
-# --- ROTA CHAT ---
-class ChatRequest(BaseModel): history: List[Dict[str, str]]; persona: str 
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
     try:
@@ -326,8 +357,6 @@ async def chat_endpoint(req: ChatRequest):
         return {"response": res.text or "..."}
     except Exception as e: raise HTTPException(500, str(e))
 
-# --- ROTA CUPOM ---
-class CouponRequest(BaseModel): user_id: str; code: str
 @app.post("/redeem-coupon")
 async def redeem_coupon_endpoint(req: CouponRequest):
     try:
@@ -337,7 +366,26 @@ async def redeem_coupon_endpoint(req: CouponRequest):
         if "200" in str(e): return {"message": "Sucesso!"}
         raise HTTPException(400, "Erro cupom")
 
-# --- WEBHOOK STRIPE (Com gamificação de Moedas) ---
+@app.post("/redeem-coins")
+async def redeem_coins_endpoint(user_id: str = Form(...)):
+    try:
+        user_res = supabase.table("profiles").select("coins, plan_tier").eq("id", user_id).execute()
+        if not user_res.data: raise HTTPException(404, "User not found")
+        
+        user = user_res.data[0]
+        if (user.get('coins') or 0) < 250:
+            raise HTTPException(400, "Saldo de moedas insuficiente.")
+            
+        supabase.table("profiles").update({
+            "coins": user['coins'] - 250,
+            "plan_tier": "plus",
+            "credits": 1000 
+        }).eq("id", user_id).execute()
+        return {"status": "success", "message": "Plano Plus ativado!"}
+    except Exception as e:
+        print(f"Redeem Error: {e}")
+        raise HTTPException(500, str(e))
+
 @app.post("/webhook")
 async def stripe_webhook(request: Request):
     payload = await request.body()
@@ -366,7 +414,6 @@ async def stripe_webhook(request: Request):
                 if new_plan: data["plan_tier"] = new_plan
                 supabase.table("profiles").update(data).eq("id", user_id).execute()
                 
-                # Gamificação: Padrinho ganha moedas se indicado assinar
                 ref_code = u_data.get('referred_by')
                 if ref_code and new_plan:
                     referrer = supabase.table("profiles").select("id, credits, coins").eq("referral_code", ref_code).execute()
@@ -377,7 +424,6 @@ async def stripe_webhook(request: Request):
                             "credits": ref_data['credits'] + 100,
                             "coins": new_coins
                         }).eq("id", ref_data['id']).execute()
-                        
             except Exception as e: print(f"Stripe Error: {e}")
 
     return {"status": "success"}
