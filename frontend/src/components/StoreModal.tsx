@@ -46,7 +46,7 @@ export default function StoreModal({ userId, currentPlan, referralCode, onClose,
 
     // GERA O LINK DIRETO PARA COMPARTILHAR
     const copyLink = () => {
-        const link = `https://studio.nastia.com.br/?ref=${referralCode}`;
+        const link = `https://nastia-studio.netlify.app/?ref=${referralCode}`;
         navigator.clipboard.writeText(link);
         alert("Link de convite copiado! Envie para seus amigos.");
     };
