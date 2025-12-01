@@ -203,7 +203,7 @@ export default function Home() {
         setChatInput("");
         setChatLoading(true);
         try {
-            const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/chat`, { history: chatHistory.concat(userMsg), persona: currentPersona.prompt });
+            const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/chat`, { user_id: session.user.id, history: chatHistory.concat(userMsg), persona: currentPersona.prompt });
             setChatHistory(prev => [...prev, { role: "model", parts: res.data.response }]);
         } catch (e) { setChatHistory(prev => [...prev, { role: "model", parts: "Erro de conexão." }]); } finally { setChatLoading(false); }
     };
