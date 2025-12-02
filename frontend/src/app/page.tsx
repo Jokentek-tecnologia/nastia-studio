@@ -61,6 +61,7 @@ export default function Home() {
     const [notifications, setNotifications] = useState<any[]>([]);
     const [showNotifications, setShowNotifications] = useState(false);
 
+    // MODAIS
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isStoreOpen, setIsStoreOpen] = useState(false);
     const [isReferralOpen, setIsReferralOpen] = useState(false);
@@ -68,6 +69,7 @@ export default function Home() {
     const [hasCustomKey, setHasCustomKey] = useState(false);
     const [selectedMedia, setSelectedMedia] = useState<any>(null);
 
+    // CHAT STATES
     const [chatHistory, setChatHistory] = useState<{ role: string, parts: string }[]>([]);
     const [chatInput, setChatInput] = useState("");
     const [chatLoading, setChatLoading] = useState(false);
@@ -84,7 +86,13 @@ export default function Home() {
 
     const fetchProfile = async (userId: string) => {
         const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (data) { setCredits(data.credits); setPlan(data.plan_tier); setReferralCode(data.referral_code); setCoins(data.coins || 0); if (data.custom_api_key) setHasCustomKey(true); }
+        if (data) {
+            setCredits(data.credits);
+            setPlan(data.plan_tier);
+            setReferralCode(data.referral_code);
+            setCoins(data.coins || 0);
+            if (data.custom_api_key) setHasCustomKey(true);
+        }
     };
 
     const fetchHistory = async (userId: string) => {
@@ -124,7 +132,6 @@ export default function Home() {
     };
 
     const handleEditFromGallery = async (url: string) => { setResultUrl(url); setIsEditorOpen(true); setSelectedMedia(null); }
-    const handleMobileEditClick = () => { alert("Para editar, use o chat."); };
     const prepareAd = () => { const list = mode === "image" ? SHORT_ADS : LONG_ADS; setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]); setAdProgress(0); };
 
     const handleGenerate = async () => {
@@ -188,46 +195,121 @@ export default function Home() {
     if (hasCustomKey) currentCost = 0;
 
     return (
-        // LAYOUT PRINCIPAL: h-screen (Fixo na tela) e overflow-hidden (Sem scroll geral)
         <main className="h-screen bg-[#050505] text-white flex flex-col font-sans overflow-hidden">
 
-            {/* HEADER FIXO */}
+            {/* HEADER COMPLETO (Com Notificações Restauradas) */}
             <header className="h-16 shrink-0 border-b border-gray-800 bg-black/50 backdrop-blur-md flex justify-between items-center px-4 z-30">
                 <div className="flex items-center gap-3 cursor-pointer" onClick={() => setMode('home')}>
-                    <img src="/app-logo.png" alt="Logo" className="h-8 w-auto" />
-                    <div className="hidden sm:block"><h1 className="font-bold text-lg leading-none">NastIA Studio</h1></div>
+                    <img src="/app-logo.png" alt="NastIA Logo" className="h-8 w-auto" />
+                    <div className="hidden sm:block">
+                        <h1 className="font-bold text-lg leading-none">NastIA Studio</h1>
+                    </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-4">
                     {/* Botões do Header */}
                     <button onClick={() => setIsApiKeyOpen(true)} className={`hidden md:flex items-center gap-2 border px-3 py-1 rounded-full text-xs font-bold hover:scale-105 transition-transform ${hasCustomKey ? "bg-green-900/30 border-green-500 text-green-400" : "bg-gray-800 border-gray-600 text-gray-400"}`}>
                         <Key className="w-3 h-3" /> {hasCustomKey ? "Turbo" : "Grátis"}
                     </button>
-                    <button onClick={() => setIsReferralOpen(true)} className="flex items-center gap-2 bg-gradient-to-r from-purple-900 to-pink-900 border border-purple-500/30 px-3 py-1 rounded-full hover:scale-105 transition-transform">
+
+                    <button onClick={() => setIsReferralOpen(true)} className="flex items-center gap-2 bg-gradient-to-r from-purple-900 to-pink-900 border border-purple-500/30 p-2 md:px-3 md:py-1 rounded-full hover:scale-105 transition-transform">
                         <Gift className="w-4 h-4 text-pink-400" /> <span className="text-xs font-bold text-pink-100 hidden md:inline">Prêmios</span>
                     </button>
-                    <div className="flex flex-col items-end cursor-pointer" onClick={toggleStore}>
-                        <div className="flex items-center gap-1 text-yellow-500 font-bold"><Coins className="w-4 h-4" /> <span className="text-sm">{credits}</span></div>
+
+                    <div className="flex flex-col items-end cursor-pointer hover:opacity-80 transition-opacity" onClick={toggleStore}>
+                        <div className="flex items-center gap-1 text-yellow-500 font-bold">
+                            <Coins className="w-4 h-4" /> <span className="text-sm">{credits}</span>
+                        </div>
                     </div>
+
+                    {/* NOTIFICAÇÕES (RESTAURADO E VISÍVEL) */}
                     <div className="relative">
-                        <img src={session.user.user_metadata.avatar_url} className="w-8 h-8 rounded-full border border-gray-700 cursor-pointer" onClick={toggleNotifications} />
+                        <div className="relative cursor-pointer p-2 hover:bg-gray-800 rounded-full transition-colors" onClick={toggleNotifications}>
+                            <Bell className="w-5 h-5 text-gray-300" />
+                            {notifications.length > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#050505]"></span>}
+                        </div>
+
                         {showNotifications && (
-                            <div className="fixed top-14 right-4 z-50 w-64 bg-[#18181b] border border-gray-700 rounded-xl shadow-2xl p-2" onClick={() => setShowNotifications(false)}>
-                                <div className="text-xs font-bold text-gray-400 mb-2 px-2 flex justify-between"><span>Notificações</span><X className="w-3 h-3" /></div>
-                                {notifications.length === 0 ? <div className="text-center text-xs text-gray-600 py-2">Nada.</div> : notifications.map(n => <div key={n.id} className="text-xs p-2 hover:bg-gray-800 rounded mb-1">{n.title}</div>)}
-                                <div className="border-t border-gray-700 mt-2 pt-2"><button onClick={handleLogout} className="w-full text-left text-xs text-red-400 p-2 hover:bg-red-900/20 rounded flex gap-2 items-center"><LogOut className="w-3 h-3" /> Sair</button></div>
+                            <div className="fixed top-16 right-4 z-50 w-72 bg-[#18181b] border border-gray-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
+                                <div className="p-3 border-b border-gray-800 text-xs font-bold text-gray-400 flex justify-between items-center">
+                                    <span>Notificações</span>
+                                    <button onClick={() => setShowNotifications(false)}><X className="w-4 h-4" /></button>
+                                </div>
+                                <div className="max-h-60 overflow-y-auto bg-[#18181b]">
+                                    {notifications.length === 0 ? (
+                                        <div className="p-4 text-center text-xs text-gray-600">Nenhuma notificação.</div>
+                                    ) : (
+                                        notifications.map(n => (
+                                            <div key={n.id} className="p-3 border-b border-gray-800 hover:bg-gray-800/50 cursor-pointer">
+                                                <h4 className="text-sm font-bold text-white mb-1">{n.title}</h4>
+                                                <p className="text-xs text-gray-400 leading-relaxed">{n.message}</p>
+                                                {n.link && <a href={n.link} target="_blank" className="text-[10px] text-yellow-500 hover:underline mt-2 block flex items-center gap-1">Ver mais <ExternalLink className="w-3 h-3" /></a>}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                                <div className="p-2 border-t border-gray-700 bg-[#121214]">
+                                    <button onClick={handleLogout} className="w-full text-left text-xs text-red-400 p-2 hover:bg-red-900/20 rounded flex gap-2 items-center justify-center font-bold"><LogOut className="w-3 h-3" /> Sair da Conta</button>
+                                </div>
                             </div>
                         )}
                     </div>
+
+                    <img src={session.user.user_metadata.avatar_url} className="w-8 h-8 rounded-full border border-gray-700 ml-1" />
                 </div>
             </header>
 
-            {/* ÁREA DE CONTEÚDO (Flexível) */}
-            <div className="flex-1 overflow-hidden flex flex-col md:flex-row relative">
+            {isEditorOpen && resultUrl && <ImageEditor imageUrl={resultUrl} onClose={() => setIsEditorOpen(false)} />}
+            {isStoreOpen && <StoreModal userId={session.user.id} currentPlan={plan} referralCode={referralCode} onClose={() => setIsStoreOpen(false)} onUpdate={() => fetchProfile(session.user.id)} />}
+            {isReferralOpen && referralCode && <GamifiedReferral userId={session.user.id} referralCode={referralCode} onClose={() => setIsReferralOpen(false)} />}
+            {isApiKeyOpen && <ApiKeyModal userId={session.user.id} onClose={() => setIsApiKeyOpen(false)} onSuccess={() => { setHasCustomKey(true); fetchProfile(session.user.id); }} />}
+            <SupportWidget userId={session.user.id} userName={session.user.user_metadata.full_name} />
 
-                {/* MENU LATERAL (APENAS DESKTOP - Para não ocupar altura no mobile) */}
+            {/* Modal de Mídia Mobile */}
+            {selectedMedia && (
+                <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setSelectedMedia(null)}>
+                    <div className="bg-[#18181b] w-full max-w-sm rounded-2xl border border-gray-700 p-4 space-y-4" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-between items-center border-b border-gray-800 pb-2">
+                            <h3 className="font-bold text-white">Visualizar</h3>
+                            <button onClick={() => setSelectedMedia(null)}><X className="w-5 h-5 text-gray-400" /></button>
+                        </div>
+                        <div className="rounded-xl overflow-hidden bg-black aspect-square flex items-center justify-center">
+                            {selectedMedia.type === 'image' ? <img src={selectedMedia.url} className="w-full h-full object-contain" /> : <video src={selectedMedia.url} controls className="w-full h-full" />}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button onClick={() => handleDownload(selectedMedia.url, selectedMedia.type)} className="bg-white text-black py-3 rounded-xl font-bold flex items-center justify-center gap-2"><Download className="w-4 h-4" /> Baixar</button>
+                            <button onClick={() => handleShare(selectedMedia.url, selectedMedia.type)} className="bg-gray-800 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"><Share2 className="w-4 h-4" /> Enviar</button>
+                            {selectedMedia.type === 'image' && (
+                                <button onClick={() => handleTransformToVideo(null)} className="bg-blue-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 col-span-2"><PlayCircle className="w-4 h-4" /> Criar Vídeo</button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {loading && (
+                <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center">
+                    {pendingResult && (
+                        <button onClick={handleSkipAd} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-green-500 text-black px-8 py-4 rounded-full font-bold text-xl shadow-2xl animate-bounce flex items-center gap-2 hover:bg-green-400 transition-all cursor-pointer">
+                            <CheckCircle className="w-6 h-6" /> VER RESULTADO AGORA
+                        </button>
+                    )}
+                    <div className="absolute top-8 right-8 flex items-center gap-2 text-yellow-500 animate-pulse z-20">
+                        <Sparkles className="w-5 h-5" />
+                        <span className="font-bold tracking-widest">{pendingResult ? "PRONTO!" : "CRIANDO..."}</span>
+                    </div>
+                    <div className="w-full h-full absolute inset-0">
+                        <AdPlayer src={currentAdUrl} onEnded={handleAdEnded} />
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} /></div>
+                </div>
+            )}
+
+            <div className="flex-1 w-full flex flex-col overflow-hidden relative">
+
+                {/* MENU LATERAL (Apenas Desktop) */}
                 {mode !== 'home' && (
-                    <div className="hidden md:flex flex-col gap-2 w-20 bg-[#0f0f10] border-r border-gray-800 items-center py-4 shrink-0">
+                    <div className="hidden md:flex flex-col gap-2 w-20 bg-[#0f0f10] border-r border-gray-800 items-center py-4 shrink-0 absolute left-0 top-0 bottom-0 z-20">
                         <button onClick={() => setMode("chat")} className={`p-3 rounded-xl transition-all ${mode === "chat" ? "bg-purple-600 text-white" : "text-gray-500 hover:bg-gray-800"}`} title="Chat"><MessageSquare className="w-6 h-6" /></button>
                         <button onClick={() => { setMode("image"); setImageFiles([]); }} className={`p-3 rounded-xl transition-all ${mode === "image" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-800"}`} title="Imagem"><ImageIcon className="w-6 h-6" /></button>
                         <button onClick={() => { setMode("video"); setImageFiles([]); setAspectRatio("16:9"); }} className={`p-3 rounded-xl transition-all ${mode === "video" ? "bg-orange-600 text-white" : "text-gray-500 hover:bg-gray-800"}`} title="Vídeo"><VideoIcon className="w-6 h-6" /></button>
@@ -235,173 +317,208 @@ export default function Home() {
                     </div>
                 )}
 
-                {/* MENU TOPO (APENAS MOBILE) */}
-                {mode !== 'home' && (
-                    <div className="md:hidden flex w-full bg-[#0f0f10] border-b border-gray-800 shrink-0 overflow-x-auto p-2 gap-2">
-                        <button onClick={() => setMode("chat")} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "chat" ? "bg-purple-900/50 text-purple-200" : "text-gray-500"}`}>Chat</button>
-                        <button onClick={() => { setMode("image"); setImageFiles([]); }} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "image" ? "bg-blue-900/50 text-blue-200" : "text-gray-500"}`}>Img</button>
-                        <button onClick={() => { setMode("video"); setImageFiles([]); setAspectRatio("16:9"); }} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "video" ? "bg-orange-900/50 text-orange-200" : "text-gray-500"}`}>Vídeo</button>
-                        <button onClick={() => setMode("gallery")} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "gallery" ? "bg-yellow-900/50 text-yellow-200" : "text-gray-500"}`}>Galeria</button>
-                    </div>
-                )}
+                {/* AREA DE CONTEUDO (Com Padding Esquerdo no Desktop se tiver menu) */}
+                <div className={`flex-1 overflow-y-auto w-full p-4 py-6 ${mode !== 'home' ? 'md:pl-24' : ''}`}>
+                    <div className="w-full max-w-6xl mx-auto space-y-6">
 
-                {/* ÁREA CENTRAL DE TRABALHO */}
-                <div className="flex-1 overflow-hidden relative flex flex-col">
-
-                    {/* HOME (Scrollável) */}
-                    {mode === 'home' && (
-                        <div className="flex-1 overflow-y-auto p-4">
-                            <div className="max-w-2xl mx-auto space-y-6 pb-20">
-                                <div className="text-center py-6">
-                                    <h2 className="text-3xl font-bold text-white mb-2">Olá, {session.user.user_metadata.full_name?.split(' ')[0]} 👋</h2>
-                                    <p className="text-gray-400">O que você vai criar agora?</p>
+                        {mode === 'home' && (
+                            <div className="w-full animate-in fade-in slide-in-from-bottom-4 space-y-8 pb-10 max-w-4xl mx-auto">
+                                <div className="text-center py-8">
+                                    <h2 className="text-4xl font-bold text-white mb-2 tracking-tight">Olá, <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">{session.user.user_metadata.full_name?.split(' ')[0]}</span> 👋</h2>
+                                    <p className="text-lg text-gray-400">Pronto para criar algo incrível?</p>
                                 </div>
-                                {/* Cards de Atalho */}
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-gradient-to-br from-[#121214] to-[#1a1a1e] border border-gray-800 p-6 rounded-3xl flex flex-col justify-between relative overflow-hidden cursor-pointer hover:border-yellow-500/30 transition-all shadow-xl" onClick={toggleStore}>
+                                        <div className="absolute -top-4 -right-4 p-2 opacity-10"><Coins className="w-24 h-24 text-yellow-500" /></div>
+                                        <span className="text-sm font-bold text-gray-400 uppercase tracking-widest">Saldo Atual</span>
+                                        <div className="flex items-end gap-2 mt-4">
+                                            <span className="text-4xl font-black text-white">{credits}</span>
+                                            <span className="text-xs text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded-full uppercase font-bold mb-1 border border-yellow-500/20">{plan}</span>
+                                        </div>
+                                    </div>
+                                    <div className="bg-gradient-to-br from-[#121214] to-[#1a1a1e] border border-gray-800 p-6 rounded-3xl flex flex-col justify-between cursor-pointer hover:border-purple-500/30 transition-all shadow-xl" onClick={() => setIsReferralOpen(true)}>
+                                        <span className="text-sm font-bold text-gray-400 uppercase tracking-widest">Nível de Prêmios</span>
+                                        <div className="w-full bg-gray-800 h-3 rounded-full mt-4 overflow-hidden relative">
+                                            <div className="bg-gradient-to-r from-purple-500 to-pink-500 h-full relative" style={{ width: `${Math.min((coins / 250) * 100, 100)}%` }}>
+                                                <div className="absolute right-0 top-0 bottom-0 w-2 bg-white/50 animate-pulse"></div>
+                                            </div>
+                                        </div>
+                                        <span className="text-xs text-right text-gray-500 mt-2 font-mono">{coins}/250 Moedas</span>
+                                    </div>
+                                </div>
+
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div onClick={() => setMode('chat')} className="bg-[#121214] p-5 rounded-2xl border border-gray-800 hover:border-purple-500/50 cursor-pointer group transition-all">
-                                        <MessageSquare className="w-8 h-8 text-purple-500 mb-3 group-hover:scale-110 transition-transform" />
-                                        <h3 className="font-bold text-white">Chat Inteligente</h3>
-                                        <p className="text-xs text-gray-400 mt-1">Converse com a Nah e especialistas.</p>
+                                    <div onClick={() => setMode('chat')} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-purple-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg">
+                                        <div className="bg-purple-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-purple-400"><MessageSquare className="w-7 h-7" /></div>
+                                        <h3 className="font-bold text-xl text-white">Chat & Nah</h3>
+                                        <p className="text-sm text-gray-400 mt-2 leading-relaxed">Converse, crie roteiros e tenha ideias com nossa IA.</p>
                                     </div>
-                                    <div onClick={() => { setMode('image'); setImageFiles([]); }} className="bg-[#121214] p-5 rounded-2xl border border-gray-800 hover:border-blue-500/50 cursor-pointer group transition-all">
-                                        <ImageIcon className="w-8 h-8 text-blue-500 mb-3 group-hover:scale-110 transition-transform" />
-                                        <h3 className="font-bold text-white">Criar Imagens</h3>
-                                        <p className="text-xs text-gray-400 mt-1">Gere artes incríveis com IA.</p>
+                                    <div onClick={() => { setMode('image'); setImageFiles([]); }} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-blue-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg">
+                                        <div className="bg-blue-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-blue-400"><ImageIcon className="w-7 h-7" /></div>
+                                        <h3 className="font-bold text-xl text-white">Gerar Imagens</h3>
+                                        <p className="text-sm text-gray-400 mt-2 leading-relaxed">Crie ou edite imagens incríveis com o Nano Banana.</p>
                                     </div>
-                                    <div onClick={() => { setMode('video'); setImageFiles([]); setAspectRatio("16:9"); }} className="bg-[#121214] p-5 rounded-2xl border border-gray-800 hover:border-orange-500/50 cursor-pointer group transition-all">
-                                        <VideoIcon className="w-8 h-8 text-orange-500 mb-3 group-hover:scale-110 transition-transform" />
-                                        <h3 className="font-bold text-white">Criar Vídeos</h3>
-                                        <p className="text-xs text-gray-400 mt-1">Dê movimento às suas ideias.</p>
+                                    <div onClick={() => { setMode('video'); setImageFiles([]); setAspectRatio("16:9"); }} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-orange-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg">
+                                        <div className="bg-orange-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-orange-400"><VideoIcon className="w-7 h-7" /></div>
+                                        <h3 className="font-bold text-xl text-white">Criar Vídeos</h3>
+                                        <p className="text-sm text-gray-400 mt-2 leading-relaxed">Transforme textos e imagens em vídeos cinematográficos.</p>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-                    )}
 
-                    {/* MODO CRIAÇÃO (SPLIT VIEW NO DESKTOP) */}
-                    {(mode === "image" || mode === "video") && (
-                        <div className="flex flex-col md:flex-row h-full w-full">
-                            {/* COLUNA ESQUERDA: CONTROLES (Scrollável) */}
-                            <div className="w-full md:w-[400px] h-full overflow-y-auto border-r border-gray-800 p-4 bg-[#050505]">
-                                <div className="space-y-6 pb-20">
-                                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                                        {mode === 'image' ? <ImageIcon className="w-5 h-5 text-blue-500" /> : <VideoIcon className="w-5 h-5 text-orange-500" />}
-                                        Configurações
-                                    </h3>
-
-                                    <div className="space-y-2">
-                                        <label className="text-xs text-gray-400 font-bold uppercase">Formato</label>
-                                        <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)} className="w-full bg-[#121214] text-white border border-gray-700 rounded-xl p-3 text-sm focus:border-white outline-none">
-                                            {ASPECT_RATIOS.filter(ratio => mode === "image" || ["16:9", "9:16"].includes(ratio.value)).map(ratio => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}
-                                        </select>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="text-xs text-gray-400 font-bold uppercase">{mode === 'video' ? 'Imagem Guia (Opcional)' : 'Referência (Opcional)'}</label>
-                                        <div className="flex flex-wrap gap-2">
-                                            {imageFiles.map((file, idx) => (
-                                                <div key={idx} className="relative w-20 h-20 bg-gray-800 rounded-xl overflow-hidden border border-gray-700 group">
-                                                    <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover opacity-80" />
-                                                    <button onClick={() => removeImage(idx)} className="absolute top-1 right-1 bg-black/60 p-1 rounded-full text-white hover:bg-red-500"><XCircle className="w-4 h-4" /></button>
-                                                </div>
-                                            ))}
-                                            {((mode === "image" && imageFiles.length < 5) || (mode === "video" && imageFiles.length < 1)) && (
-                                                <button onClick={() => fileInputRef.current?.click()} className="w-20 h-20 border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center text-gray-500 hover:text-white hover:border-gray-500 transition-all hover:bg-gray-800">
-                                                    <Plus className="w-6 h-6" /><span className="text-[9px] mt-1">Adicionar</span>
-                                                </button>
-                                            )}
-                                            <input type="file" ref={fileInputRef} onChange={handleImageSelect} className="hidden" accept="image/*" multiple={mode === "image"} />
+                                {!hasCustomKey && (
+                                    <div onClick={() => setIsApiKeyOpen(true)} className="bg-gradient-to-r from-green-900/20 to-emerald-900/20 border border-green-500/30 p-5 rounded-3xl flex items-center gap-5 cursor-pointer hover:scale-[1.01] transition-transform shadow-lg">
+                                        <div className="bg-green-500/20 p-4 rounded-full text-green-400 animate-pulse"><Zap className="w-6 h-6" /></div>
+                                        <div>
+                                            <h4 className="font-bold text-lg text-green-100">Ativar Modo Turbo Grátis</h4>
+                                            <p className="text-sm text-green-300/70">Use sua conta do Google para gerar sem gastar créditos da plataforma.</p>
                                         </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="text-xs text-gray-400 font-bold uppercase">Prompt</label>
-                                        <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Descreva o que você quer criar..." className="w-full bg-[#121214] border border-gray-700 rounded-xl p-4 text-white h-40 focus:border-white outline-none resize-none" />
-                                    </div>
-
-                                    <button onClick={handleGenerate} disabled={loading || !prompt || (credits < currentCost && !hasCustomKey)} className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 shadow-lg transition-all ${loading ? "bg-gray-800 text-gray-500" : "bg-white text-black hover:scale-[1.02]"}`}>
-                                        {loading ? <div className="animate-spin w-5 h-5 border-2 border-black border-t-transparent rounded-full" /> : <Sparkles className="w-5 h-5" />}
-                                        {loading ? "Criando..." : (hasCustomKey ? "Gerar Grátis" : `Gerar (-${currentCost})`)}
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* COLUNA DIREITA: PREVIEW (Fixo, sem scroll) */}
-                            <div className="flex-1 bg-[#0a0a0a] flex items-center justify-center p-4 relative overflow-hidden">
-                                <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
-                                {resultUrl ? (
-                                    <div className="relative max-w-full max-h-full rounded-xl overflow-hidden shadow-2xl border border-gray-800 animate-in zoom-in-95">
-                                        {mode === "image" ? <img src={resultUrl} className="max-w-full max-h-[80vh] object-contain" /> : <video src={resultUrl} controls autoPlay loop className="max-w-full max-h-[80vh]" />}
-                                        <div className="absolute top-4 right-4 flex gap-2">
-                                            <button onClick={() => handleDownload(resultUrl, mode)} className="p-2 bg-black/50 hover:bg-black/80 text-white rounded-lg backdrop-blur-sm"><Download className="w-5 h-5" /></button>
-                                            <button onClick={() => handleShare(resultUrl, mode)} className="p-2 bg-black/50 hover:bg-black/80 text-white rounded-lg backdrop-blur-sm"><Share2 className="w-5 h-5" /></button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="text-center text-gray-600">
-                                        <Sparkles className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                                        <p>Seu resultado aparecerá aqui.</p>
+                                        <ArrowRightCircle className="w-6 h-6 text-green-500 ml-auto" />
                                     </div>
                                 )}
-                            </div>
-                        </div>
-                    )}
 
-                    {/* MODO CHAT (Full Height) */}
-                    {mode === "chat" && (
-                        <div className="flex h-full w-full">
-                            <div className="w-64 bg-[#0f0f10] border-r border-gray-800 p-4 hidden md:flex flex-col gap-2 overflow-y-auto">
-                                <h3 className="text-xs font-bold text-gray-500 uppercase mb-2">Personas</h3>
-                                {PERSONAS.map(p => (
-                                    <button key={p.id} onClick={() => { setCurrentPersona(p); setChatHistory([]); }} className={`p-3 rounded-xl text-left text-sm font-medium transition-all ${currentPersona.id === p.id ? "bg-purple-900/30 text-purple-200 border border-purple-500/30" : "text-gray-400 hover:bg-gray-800"}`}>
-                                        {p.name}
-                                    </button>
-                                ))}
+                                <div className="text-center pt-6">
+                                    <button onClick={() => setMode('gallery')} className="text-sm text-gray-500 hover:text-white flex items-center justify-center gap-2 mx-auto transition-colors"><Clock className="w-4 h-4" /> Ver meu histórico recente</button>
+                                </div>
                             </div>
-                            <div className="flex-1 flex flex-col bg-[#050505] relative">
-                                <div className="md:hidden p-2 border-b border-gray-800">
-                                    <select onChange={(e) => { const p = PERSONAS.find(x => x.id === e.target.value); if (p) setCurrentPersona(p); }} className="w-full bg-[#18181b] p-2 rounded text-sm text-white">
+                        )}
+
+                        {/* MENU TOPO (APENAS MOBILE - QUANDO NÃO ESTÁ NA HOME) */}
+                        {mode !== 'home' && (
+                            <div className="md:hidden flex w-full bg-gray-900 p-1.5 rounded-2xl border border-gray-800 overflow-x-auto shrink-0 mb-4 sticky top-0 z-20 shadow-xl">
+                                <button onClick={() => setMode("chat")} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "chat" ? "bg-purple-900/50 text-purple-200" : "text-gray-500"}`}>Chat</button>
+                                <button onClick={() => { setMode("image"); setImageFiles([]); }} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "image" ? "bg-blue-900/50 text-blue-200" : "text-gray-500"}`}>Img</button>
+                                <button onClick={() => { setMode("video"); setImageFiles([]); setAspectRatio("16:9"); }} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "video" ? "bg-orange-900/50 text-orange-200" : "text-gray-500"}`}>Vídeo</button>
+                                <button onClick={() => setMode("gallery")} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "gallery" ? "bg-yellow-900/50 text-yellow-200" : "text-gray-500"}`}>Galeria</button>
+                            </div>
+                        )}
+
+                        {mode === "chat" && (
+                            <div className="w-full flex flex-col md:flex-row gap-4 h-[65vh] md:h-[calc(100vh-140px)]">
+                                <div className="w-full md:w-1/3 bg-[#0f0f10] border border-gray-800 rounded-3xl p-4 overflow-y-auto hidden md:block">
+                                    <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">Especialistas</h3>
+                                    <div className="space-y-2">
+                                        {PERSONAS.map(persona => (
+                                            <div key={persona.id} onClick={() => { setCurrentPersona(persona); setChatHistory([]); }} className={`p-4 rounded-2xl cursor-pointer border transition-all ${currentPersona.id === persona.id ? "bg-purple-900/20 border-purple-500/50" : "bg-gray-900/30 border-transparent hover:bg-gray-800"}`}>
+                                                <div className="font-bold text-sm text-white">{persona.name}</div>
+                                                <div className="text-[10px] text-gray-500 mt-1">{persona.role}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="md:hidden w-full">
+                                    <select onChange={(e) => { const p = PERSONAS.find(p => p.id === e.target.value); if (p) { setCurrentPersona(p); setChatHistory([]); } }} className="w-full bg-[#18181b] text-white p-3 rounded-xl border border-gray-700 outline-none">
                                         {PERSONAS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                     </select>
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                                    {chatHistory.length === 0 && (
-                                        <div className="h-full flex flex-col items-center justify-center text-gray-600 opacity-50">
-                                            <Bot className="w-12 h-12 mb-2" />
-                                            <p>Inicie a conversa com {currentPersona.name}</p>
+
+                                <div className="flex-1 bg-[#0f0f10] border border-gray-800 rounded-3xl flex flex-col overflow-hidden relative shadow-inner">
+                                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                        {chatHistory.length === 0 && (
+                                            <div className="h-full flex flex-col items-center justify-center text-gray-600 text-center p-6">
+                                                <Bot className="w-16 h-16 mb-4 text-purple-900/30" />
+                                                <p className="text-lg font-bold text-gray-300">Olá! Sou a {currentPersona.name}.</p>
+                                                <p className="text-sm mt-2 max-w-xs">{currentPersona.prompt.split('.')[1]}</p>
+                                            </div>
+                                        )}
+                                        {chatHistory.map((msg, i) => (
+                                            <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                                                <div className={`max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed shadow-md ${msg.role === "user" ? "bg-white text-black" : "bg-[#18181b] text-gray-200 border border-gray-800"}`}>{msg.parts}</div>
+                                            </div>
+                                        ))}
+                                        {chatLoading && <div className="text-gray-500 text-xs animate-pulse ml-4">Digitando...</div>}
+                                        <div ref={chatEndRef} />
+                                    </div>
+                                    <div className="p-4 border-t border-gray-800 bg-[#0a0a0a] flex gap-2">
+                                        <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleChatSend()} placeholder="Digite sua mensagem..." className="flex-1 bg-[#18181b] border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-purple-500 outline-none transition-all" />
+                                        <button onClick={handleChatSend} disabled={chatLoading} className="bg-purple-600 hover:bg-purple-500 text-white p-3 rounded-xl transition-all shadow-lg"><Send className="w-5 h-5" /></button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {(mode === "image" || mode === "video") && (
+                            <div className="flex flex-col md:flex-row gap-6 w-full h-full max-w-7xl mx-auto items-start">
+                                {/* COLUNA ESQUERDA: CONTROLES */}
+                                <div className={`flex-1 flex flex-col gap-4 w-full ${resultUrl ? 'md:w-1/3' : 'md:max-w-2xl md:mx-auto'}`}>
+                                    <div className="w-full bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
+                                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-500 via-orange-500 to-purple-500 opacity-20 group-hover:opacity-50 transition-opacity"></div>
+
+                                        <div className="relative w-full mb-4">
+                                            <div className="relative">
+                                                <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)} className="w-full bg-[#18181b] text-white border border-gray-700 rounded-xl p-3 pl-4 appearance-none cursor-pointer focus:border-yellow-500 outline-none text-sm font-medium">
+                                                    {ASPECT_RATIOS.filter(ratio => mode === "image" || ["16:9", "9:16"].includes(ratio.value)).map(ratio => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}
+                                                </select>
+                                                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                                            </div>
+                                            {mode === "video" && <p className="text-[10px] text-gray-500 mt-1 ml-2">Modo vídeo suporta apenas 16:9 e 9:16.</p>}
                                         </div>
-                                    )}
-                                    {chatHistory.map((msg, i) => (
-                                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                            <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-white text-black' : 'bg-gray-800 text-gray-200'}`}>
-                                                {msg.parts}
+
+                                        <div className="space-y-4 mb-6">
+                                            <div className="flex flex-wrap gap-3">
+                                                {imageFiles.map((file, idx) => (
+                                                    <div key={idx} className="relative w-20 h-20 bg-gray-800 rounded-xl overflow-hidden border border-gray-700 group/img">
+                                                        <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover opacity-70 group-hover/img:opacity-100 transition-opacity" />
+                                                        <button onClick={() => removeImage(idx)} className="absolute top-0.5 right-0.5 bg-black/50 text-white rounded-full p-0.5 hover:bg-red-500"><XCircle className="w-4 h-4" /></button>
+                                                    </div>
+                                                ))}
+                                                {((mode === "image" && imageFiles.length < 8) || (mode === "video" && imageFiles.length < 1)) && (
+                                                    <button onClick={() => fileInputRef.current?.click()} className="w-20 h-20 border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center text-gray-500 hover:text-white hover:border-gray-500 transition-all hover:bg-gray-800/50">
+                                                        <Plus className="w-6 h-6" /><span className="text-[9px] mt-1">{mode === 'video' ? 'Start Frame' : 'Add'}</span>
+                                                    </button>
+                                                )}
+                                                <input type="file" ref={fileInputRef} onChange={handleImageSelect} className="hidden" accept="image/*" multiple={mode === "image"} />
+                                            </div>
+                                            {isEditing && (
+                                                <div className="flex items-center gap-2 text-xs text-yellow-500 bg-yellow-500/10 p-2 rounded-lg border border-yellow-500/20">
+                                                    <Layers className="w-4 h-4" /> <span>Modo Edição Ativo</span> <button onClick={handleClearAll} className="ml-auto hover:underline text-white">Limpar</button>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={isEditing ? "O que mudar?" : "Descreva sua criação..."} className="w-full bg-[#18181b] border border-gray-700 rounded-xl p-4 text-gray-200 h-40 mb-4 focus:border-yellow-500 outline-none transition-colors resize-none" />
+
+                                        <button onClick={handleGenerate} disabled={loading || !prompt || (credits < currentCost && !hasCustomKey)} className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all shadow-xl ${loading || (credits < currentCost && !hasCustomKey) ? "bg-gray-800 text-gray-500 cursor-not-allowed" : "bg-white text-black hover:bg-gray-200 hover:scale-[1.01]"}`}>
+                                            {loading ? <div className="animate-spin w-6 h-6 border-2 border-black border-t-transparent rounded-full" /> : <Sparkles className="w-5 h-5 fill-black" />}
+                                            {loading ? "Processando..." : (hasCustomKey ? "Gerar Grátis (Modo Turbo) ⚡" : (credits < currentCost ? "Saldo Insuficiente" : `Gerar (-${currentCost})`))}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* COLUNA DIREITA: RESULTADO (Fixo) */}
+                                {resultUrl && !loading && (
+                                    <div className="flex-1 w-full md:w-2/3 bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl animate-in fade-in slide-in-from-right-4 h-fit sticky top-4">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-gray-400 flex items-center gap-2 font-medium"><Sparkles className="w-4 h-4 text-green-500" /> Resultado</h3>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => handleShare(resultUrl, mode)} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white"><Share2 className="w-4 h-4" /></button>
+                                                <button onClick={() => handleDownload(resultUrl, mode)} className="p-2 bg-white text-black hover:bg-gray-200 rounded-lg"><Download className="w-4 h-4" /></button>
+                                            </div>
+                                        </div>
+                                        <div className="rounded-xl overflow-hidden border border-gray-800 bg-black/50 flex items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
+                                            {mode === "image" ? <img src={resultUrl} className="max-w-full max-h-[70vh] object-contain shadow-2xl" /> : <video src={resultUrl} controls autoPlay loop className="max-w-full max-h-[70vh] shadow-2xl" />}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {mode === "gallery" && (
+                            <div className="w-full bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl animate-in fade-in pb-20 max-w-6xl mx-auto">
+                                <h3 className="text-white font-bold text-xl mb-6 border-b border-gray-800 pb-4">Galeria</h3>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    {history.map((item) => (
+                                        <div key={item.id} onClick={() => setSelectedMedia(item)} className="aspect-square bg-gray-900 rounded-xl overflow-hidden border border-gray-800 relative group cursor-pointer hover:border-white transition-colors">
+                                            {item.type === 'image' ? <img src={item.url} className="w-full h-full object-cover" /> : <video src={item.url} className="w-full h-full object-cover" muted />}
+                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                <Eye className="w-8 h-8 text-white drop-shadow-lg" />
                                             </div>
                                         </div>
                                     ))}
-                                    {chatLoading && <div className="text-xs text-gray-500 animate-pulse ml-4">Digitando...</div>}
-                                    <div ref={chatEndRef} />
-                                </div>
-                                <div className="p-4 bg-[#050505] border-t border-gray-800 flex gap-2">
-                                    <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleChatSend()} placeholder="Mensagem..." className="flex-1 bg-[#18181b] border border-gray-700 rounded-xl px-4 py-3 text-white outline-none focus:border-purple-500" />
-                                    <button onClick={handleChatSend} disabled={chatLoading} className="bg-purple-600 p-3 rounded-xl text-white hover:bg-purple-500"><Send className="w-5 h-5" /></button>
                                 </div>
                             </div>
-                        </div>
-                    )}
-
-                    {/* MODO GALERIA (Grid Scrollável) */}
-                    {mode === "gallery" && (
-                        <div className="flex-1 overflow-y-auto p-4">
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-6xl mx-auto pb-20">
-                                {history.map((item) => (
-                                    <div key={item.id} onClick={() => setSelectedMedia(item)} className="aspect-square bg-gray-900 rounded-xl overflow-hidden border border-gray-800 relative group cursor-pointer hover:border-white transition-colors">
-                                        {item.type === 'image' ? <img src={item.url} className="w-full h-full object-cover" /> : <video src={item.url} className="w-full h-full object-cover" muted />}
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><Eye className="w-8 h-8 text-white" /></div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -413,28 +530,6 @@ export default function Home() {
                 <span className="w-1 h-1 bg-gray-800 rounded-full"></span>
                 {referralCode && <span onClick={copyReferral} className="cursor-pointer hover:text-yellow-500">Indique: {referralCode}</span>}
             </footer>
-
-            {/* MODAIS (Mantidos) */}
-            {isEditorOpen && resultUrl && <ImageEditor imageUrl={resultUrl} onClose={() => setIsEditorOpen(false)} />}
-            {isStoreOpen && <StoreModal userId={session.user.id} currentPlan={plan} referralCode={referralCode} onClose={() => setIsStoreOpen(false)} onUpdate={() => fetchProfile(session.user.id)} />}
-            {isReferralOpen && referralCode && <GamifiedReferral userId={session.user.id} referralCode={referralCode} onClose={() => setIsReferralOpen(false)} />}
-            {isApiKeyOpen && <ApiKeyModal userId={session.user.id} onClose={() => setIsApiKeyOpen(false)} onSuccess={() => { setHasCustomKey(true); fetchProfile(session.user.id); }} />}
-            <SupportWidget userId={session.user.id} userName={session.user.user_metadata.full_name} />
-
-            {/* MODAL MÍDIA MOBILE */}
-            {selectedMedia && (
-                <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 backdrop-blur-md animate-in zoom-in-95" onClick={() => setSelectedMedia(null)}>
-                    <div className="max-w-3xl w-full max-h-[90vh] flex flex-col gap-4" onClick={e => e.stopPropagation()}>
-                        <div className="flex-1 flex items-center justify-center bg-black rounded-xl overflow-hidden">
-                            {selectedMedia.type === 'image' ? <img src={selectedMedia.url} className="max-h-[70vh] w-auto" /> : <video src={selectedMedia.url} controls className="max-h-[70vh] w-auto" />}
-                        </div>
-                        <div className="flex justify-center gap-4">
-                            <button onClick={() => handleDownload(selectedMedia.url, selectedMedia.type)} className="bg-white text-black px-6 py-3 rounded-full font-bold flex gap-2"><Download className="w-5 h-5" /> Baixar</button>
-                            <button onClick={() => handleShare(selectedMedia.url, selectedMedia.type)} className="bg-gray-800 text-white px-6 py-3 rounded-full font-bold flex gap-2"><Share2 className="w-5 h-5" /> Compartilhar</button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </main>
     );
 }
