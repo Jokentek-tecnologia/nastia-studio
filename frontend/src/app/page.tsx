@@ -4,10 +4,10 @@ import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import {
     Sparkles, Image as ImageIcon, Video as VideoIcon,
-    Film, XCircle, Edit, LogOut, Coins, Gift, Key,
+    Film, XCircle, Edit, LogOut, Coins, Gift,
     Share2, Download, Instagram, Globe, MessageCircle, Plus, Copy,
     ArrowRightCircle, Layers, Clock, CheckCircle, Bell, ExternalLink, ChevronDown,
-    X, MessageSquare, Send, Bot, Zap, PlayCircle, Eye, Headphones
+    X, MessageSquare, Send, Bot, PlayCircle, Eye
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { supabase } from "../lib/supabase";
@@ -15,7 +15,6 @@ import Login from "../components/Login";
 import StoreModal from "../components/StoreModal";
 import AdPlayer from "../components/AdPlayer";
 import GamifiedReferral from "../components/GamifiedReferral";
-import ApiKeyModal from "../components/ApiKeyModal";
 import SupportWidget from "../components/SupportWidget";
 
 // Carregamento dinâmico
@@ -65,8 +64,8 @@ export default function Home() {
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isStoreOpen, setIsStoreOpen] = useState(false);
     const [isReferralOpen, setIsReferralOpen] = useState(false);
-    const [isApiKeyOpen, setIsApiKeyOpen] = useState(false);
-    const [hasCustomKey, setHasCustomKey] = useState(false);
+
+    // GALERIA MOBILE
     const [selectedMedia, setSelectedMedia] = useState<any>(null);
 
     // CHAT STATES
@@ -91,7 +90,6 @@ export default function Home() {
             setPlan(data.plan_tier);
             setReferralCode(data.referral_code);
             setCoins(data.coins || 0);
-            if (data.custom_api_key) setHasCustomKey(true);
         }
     };
 
@@ -106,7 +104,9 @@ export default function Home() {
     };
 
     const handleLoginSuccess = async (session: any) => {
-        fetchProfile(session.user.id); fetchHistory(session.user.id); fetchNotifications();
+        fetchProfile(session.user.id);
+        fetchHistory(session.user.id);
+        fetchNotifications();
     };
 
     useEffect(() => {
@@ -132,6 +132,7 @@ export default function Home() {
     };
 
     const handleEditFromGallery = async (url: string) => { setResultUrl(url); setIsEditorOpen(true); setSelectedMedia(null); }
+    const handleMobileEditClick = () => { alert("Para editar, use o chat."); };
     const prepareAd = () => { const list = mode === "image" ? SHORT_ADS : LONG_ADS; setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]); setAdProgress(0); };
 
     const handleGenerate = async () => {
@@ -140,9 +141,8 @@ export default function Home() {
         let cost = 5;
         if (mode === "image" && (imageFiles.length > 1 || isEditingContext)) cost = 10;
         if (mode === "video") cost = 50;
-        if (hasCustomKey) cost = 0;
 
-        if (credits < cost && !hasCustomKey) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
+        if (credits < cost) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
 
         prepareAd(); setLoading(true); const previousResult = resultUrl; setResultUrl(null); setPendingResult(null);
         const formData = new FormData(); formData.append("user_id", session.user.id); formData.append("aspect_ratio", aspectRatio);
@@ -192,12 +192,11 @@ export default function Home() {
 
     const isEditing = mode === "image" && resultUrl && imageFiles.length === 0;
     let currentCost = mode === "image" ? (imageFiles.length > 1 || isEditing ? 10 : 10) : 50;
-    if (hasCustomKey) currentCost = 0;
 
     return (
         <main className="h-screen bg-[#050505] text-white flex flex-col font-sans overflow-hidden">
 
-            {/* HEADER COMPLETO (Com Notificações Restauradas) */}
+            {/* HEADER */}
             <header className="h-16 shrink-0 border-b border-gray-800 bg-black/50 backdrop-blur-md flex justify-between items-center px-4 z-30">
                 <div className="flex items-center gap-3 cursor-pointer" onClick={() => setMode('home')}>
                     <img src="/app-logo.png" alt="NastIA Logo" className="h-8 w-auto" />
@@ -206,12 +205,7 @@ export default function Home() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-4">
-                    {/* Botões do Header */}
-                    <button onClick={() => setIsApiKeyOpen(true)} className={`hidden md:flex items-center gap-2 border px-3 py-1 rounded-full text-xs font-bold hover:scale-105 transition-transform ${hasCustomKey ? "bg-green-900/30 border-green-500 text-green-400" : "bg-gray-800 border-gray-600 text-gray-400"}`}>
-                        <Key className="w-3 h-3" /> {hasCustomKey ? "Turbo" : "Grátis"}
-                    </button>
-
+                <div className="flex items-center gap-3">
                     <button onClick={() => setIsReferralOpen(true)} className="flex items-center gap-2 bg-gradient-to-r from-purple-900 to-pink-900 border border-purple-500/30 p-2 md:px-3 md:py-1 rounded-full hover:scale-105 transition-transform">
                         <Gift className="w-4 h-4 text-pink-400" /> <span className="text-xs font-bold text-pink-100 hidden md:inline">Prêmios</span>
                     </button>
@@ -222,11 +216,10 @@ export default function Home() {
                         </div>
                     </div>
 
-                    {/* NOTIFICAÇÕES (RESTAURADO E VISÍVEL) */}
                     <div className="relative">
-                        <div className="relative cursor-pointer p-2 hover:bg-gray-800 rounded-full transition-colors" onClick={toggleNotifications}>
-                            <Bell className="w-5 h-5 text-gray-300" />
-                            {notifications.length > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#050505]"></span>}
+                        <div className="relative cursor-pointer" onClick={toggleNotifications}>
+                            <Bell className="w-6 h-6 text-gray-400 hover:text-white" />
+                            {notifications.length > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#050505]"></span>}
                         </div>
 
                         {showNotifications && (
@@ -262,10 +255,9 @@ export default function Home() {
             {isEditorOpen && resultUrl && <ImageEditor imageUrl={resultUrl} onClose={() => setIsEditorOpen(false)} />}
             {isStoreOpen && <StoreModal userId={session.user.id} currentPlan={plan} referralCode={referralCode} onClose={() => setIsStoreOpen(false)} onUpdate={() => fetchProfile(session.user.id)} />}
             {isReferralOpen && referralCode && <GamifiedReferral userId={session.user.id} referralCode={referralCode} onClose={() => setIsReferralOpen(false)} />}
-            {isApiKeyOpen && <ApiKeyModal userId={session.user.id} onClose={() => setIsApiKeyOpen(false)} onSuccess={() => { setHasCustomKey(true); fetchProfile(session.user.id); }} />}
+
             <SupportWidget userId={session.user.id} userName={session.user.user_metadata.full_name} />
 
-            {/* Modal de Mídia Mobile */}
             {selectedMedia && (
                 <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setSelectedMedia(null)}>
                     <div className="bg-[#18181b] w-full max-w-sm rounded-2xl border border-gray-700 p-4 space-y-4" onClick={(e) => e.stopPropagation()}>
@@ -317,7 +309,7 @@ export default function Home() {
                     </div>
                 )}
 
-                {/* AREA DE CONTEUDO (Com Padding Esquerdo no Desktop se tiver menu) */}
+                {/* AREA DE CONTEUDO */}
                 <div className={`flex-1 overflow-y-auto w-full p-4 py-6 ${mode !== 'home' ? 'md:pl-24' : ''}`}>
                     <div className="w-full max-w-6xl mx-auto space-y-6">
 
@@ -366,24 +358,13 @@ export default function Home() {
                                     </div>
                                 </div>
 
-                                {!hasCustomKey && (
-                                    <div onClick={() => setIsApiKeyOpen(true)} className="bg-gradient-to-r from-green-900/20 to-emerald-900/20 border border-green-500/30 p-5 rounded-3xl flex items-center gap-5 cursor-pointer hover:scale-[1.01] transition-transform shadow-lg">
-                                        <div className="bg-green-500/20 p-4 rounded-full text-green-400 animate-pulse"><Zap className="w-6 h-6" /></div>
-                                        <div>
-                                            <h4 className="font-bold text-lg text-green-100">Ativar Modo Turbo Grátis</h4>
-                                            <p className="text-sm text-green-300/70">Use sua conta do Google para gerar sem gastar créditos da plataforma.</p>
-                                        </div>
-                                        <ArrowRightCircle className="w-6 h-6 text-green-500 ml-auto" />
-                                    </div>
-                                )}
-
                                 <div className="text-center pt-6">
                                     <button onClick={() => setMode('gallery')} className="text-sm text-gray-500 hover:text-white flex items-center justify-center gap-2 mx-auto transition-colors"><Clock className="w-4 h-4" /> Ver meu histórico recente</button>
                                 </div>
                             </div>
                         )}
 
-                        {/* MENU TOPO (APENAS MOBILE - QUANDO NÃO ESTÁ NA HOME) */}
+                        {/* MENU TOPO MOBILE */}
                         {mode !== 'home' && (
                             <div className="md:hidden flex w-full bg-gray-900 p-1.5 rounded-2xl border border-gray-800 overflow-x-auto shrink-0 mb-4 sticky top-0 z-20 shadow-xl">
                                 <button onClick={() => setMode("chat")} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "chat" ? "bg-purple-900/50 text-purple-200" : "text-gray-500"}`}>Chat</button>
@@ -478,9 +459,9 @@ export default function Home() {
 
                                         <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={isEditing ? "O que mudar?" : "Descreva sua criação..."} className="w-full bg-[#18181b] border border-gray-700 rounded-xl p-4 text-gray-200 h-40 mb-4 focus:border-yellow-500 outline-none transition-colors resize-none" />
 
-                                        <button onClick={handleGenerate} disabled={loading || !prompt || (credits < currentCost && !hasCustomKey)} className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all shadow-xl ${loading || (credits < currentCost && !hasCustomKey) ? "bg-gray-800 text-gray-500 cursor-not-allowed" : "bg-white text-black hover:bg-gray-200 hover:scale-[1.01]"}`}>
+                                        <button onClick={handleGenerate} disabled={loading || !prompt || credits < currentCost} className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all shadow-xl ${loading || credits < currentCost ? "bg-gray-800 text-gray-500 cursor-not-allowed" : "bg-white text-black hover:bg-gray-200 hover:scale-[1.01]"}`}>
                                             {loading ? <div className="animate-spin w-6 h-6 border-2 border-black border-t-transparent rounded-full" /> : <Sparkles className="w-5 h-5 fill-black" />}
-                                            {loading ? "Processando..." : (hasCustomKey ? "Gerar Grátis (Modo Turbo) ⚡" : (credits < currentCost ? "Saldo Insuficiente" : `Gerar (-${currentCost})`))}
+                                            {loading ? "Processando..." : (credits < currentCost ? "Saldo Insuficiente" : `Gerar (-${currentCost})`)}
                                         </button>
                                     </div>
                                 </div>
