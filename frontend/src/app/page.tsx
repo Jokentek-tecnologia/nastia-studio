@@ -3,11 +3,12 @@
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import {
-    Sparkles, Image as ImageIcon, Video as VideoIcon,
+    Sparkles, Image as ImageIcon, Video as VideoIcon, Shirt,
     Film, XCircle, Edit, LogOut, Coins, Gift,
     Share2, Download, Instagram, Globe, MessageCircle, Plus, Copy,
     ArrowRightCircle, Layers, Clock, CheckCircle, Bell, ExternalLink, ChevronDown,
-    X, MessageSquare, Send, Bot, PlayCircle, Eye
+    X, MessageSquare, Send, Bot, PlayCircle, Eye, Headphones, Upload,
+    User
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { supabase } from "../lib/supabase";
@@ -17,9 +18,10 @@ import AdPlayer from "../components/AdPlayer";
 import GamifiedReferral from "../components/GamifiedReferral";
 import SupportWidget from "../components/SupportWidget";
 
-// Carregamento dinâmico
-const ImageEditor = dynamic(() => import("../components/ImageEditor"), { ssr: false, loading: () => <div className="text-white text-center p-10">Carregando...</div> });
+// Carregamento dinâmico do editor (Evita erro de 'window not defined')
+const ImageEditor = dynamic(() => import("../components/ImageEditor"), { ssr: false, loading: () => <div className="text-white text-center p-10">Carregando Editor...</div> });
 
+// Anúncios (Mantidos para monetização futura/loading)
 const SHORT_ADS = ["https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"];
 const LONG_ADS = ["https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"];
 
@@ -37,6 +39,7 @@ const PERSONAS = [
 ];
 
 export default function Home() {
+    // Estados Globais
     const [session, setSession] = useState<any>(null);
     const [credits, setCredits] = useState<number>(0);
     const [coins, setCoins] = useState<number>(0);
@@ -44,39 +47,44 @@ export default function Home() {
     const [referralCode, setReferralCode] = useState<string>("");
     const [authLoading, setAuthLoading] = useState(true);
 
-    const [mode, setMode] = useState<"home" | "image" | "video" | "gallery" | "chat">("home");
+    // Navegação
+    const [mode, setMode] = useState<"home" | "image" | "video" | "gallery" | "chat" | "tryon">("home");
+
+    // Estados de Criação
     const [prompt, setPrompt] = useState("");
     const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [isMobile, setIsMobile] = useState(false);
     const [aspectRatio, setAspectRatio] = useState<string>("16:9");
 
+    // Estados Try-On
+    const [personFile, setPersonFile] = useState<File | null>(null);
+    const [garmentFile, setGarmentFile] = useState<File | null>(null);
+
+    // Estados de Resultado e UI
     const [resultUrl, setResultUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [currentAdUrl, setCurrentAdUrl] = useState("");
     const [pendingResult, setPendingResult] = useState<string | null>(null);
     const [adProgress, setAdProgress] = useState(0);
-
     const [history, setHistory] = useState<any[]>([]);
     const [notifications, setNotifications] = useState<any[]>([]);
     const [showNotifications, setShowNotifications] = useState(false);
 
-    // MODAIS
+    // Modais
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isStoreOpen, setIsStoreOpen] = useState(false);
     const [isReferralOpen, setIsReferralOpen] = useState(false);
+    const [selectedMedia, setSelectedMedia] = useState<any>(null); // Modal Galeria Mobile
 
-    // GALERIA MOBILE
-    const [selectedMedia, setSelectedMedia] = useState<any>(null);
-
-    // CHAT STATES
+    // Chat
     const [chatHistory, setChatHistory] = useState<{ role: string, parts: string }[]>([]);
     const [chatInput, setChatInput] = useState("");
     const [chatLoading, setChatLoading] = useState(false);
     const [currentPersona, setCurrentPersona] = useState(PERSONAS[0]);
     const chatEndRef = useRef<HTMLDivElement>(null);
-
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Inicialização
     useEffect(() => {
         const check = () => setIsMobile(window.innerWidth < 768);
         check(); window.addEventListener('resize', check);
@@ -117,6 +125,7 @@ export default function Home() {
 
     useEffect(() => { if (mode === 'chat') chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory, mode]);
 
+    // Handlers de Ação
     const handleLogout = async () => await supabase.auth.signOut();
     const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files) { const newFiles = Array.from(e.target.files); if (mode === "video") setImageFiles([newFiles[0]]); else setImageFiles(prev => [...prev, ...newFiles].slice(0, 8)); } };
     const removeImage = (index: number) => { setImageFiles(prev => prev.filter((_, i) => i !== index)); };
@@ -132,7 +141,6 @@ export default function Home() {
     };
 
     const handleEditFromGallery = async (url: string) => { setResultUrl(url); setIsEditorOpen(true); setSelectedMedia(null); }
-    const handleMobileEditClick = () => { alert("Para editar, use o chat."); };
     const prepareAd = () => { const list = mode === "image" ? SHORT_ADS : LONG_ADS; setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]); setAdProgress(0); };
 
     const handleGenerate = async () => {
@@ -152,8 +160,9 @@ export default function Home() {
         try {
             if (mode === "image") {
                 if (imageFiles.length > 0) imageFiles.forEach(file => formData.append("files", file));
+                // ENVIA URL PARA EDIÇÃO (Mais estável que Base64)
                 else if (previousResult && isEditingContext) {
-                    try { const res = await fetch(previousResult); const blob = await res.blob(); const base64Data = await (new Promise((r) => { const reader = new FileReader(); reader.onloadend = () => r(reader.result); reader.readAsDataURL(blob); }) as any); formData.append("from_image", base64Data); } catch (e) { }
+                    formData.append("context_url", previousResult);
                 }
             } else { if (imageFiles.length > 0) formData.append("file_start", imageFiles[0]); }
 
@@ -165,6 +174,20 @@ export default function Home() {
         } catch (error: any) { alert(error.response?.data?.detail || "Erro."); setLoading(false); if (mode === "image") setResultUrl(previousResult); }
     };
 
+    const handleTryOn = async () => {
+        if (!personFile || !garmentFile) { alert("Envie as duas fotos."); return; }
+        if (credits < 80) { alert("Saldo insuficiente (80 créditos)."); setIsStoreOpen(true); return; }
+        setLoading(true);
+        const formData = new FormData();
+        formData.append("user_id", session.user.id);
+        formData.append("person_image", personFile);
+        formData.append("garment_image", garmentFile);
+        try {
+            const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/generate-tryon`, formData, { headers: { "Content-Type": "multipart/form-data" } });
+            fetchProfile(session.user.id); setResultUrl(res.data.image); setLoading(false);
+        } catch (error: any) { alert(error.response?.data?.detail || "Erro no Provador."); setLoading(false); }
+    };
+
     const handleChatSend = async () => {
         if (!chatInput.trim()) return;
         const userMsg = { role: "user", parts: chatInput };
@@ -172,7 +195,12 @@ export default function Home() {
         setChatInput("");
         setChatLoading(true);
         try {
-            const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/chat`, { user_id: session.user.id, history: chatHistory.concat(userMsg), persona: currentPersona.prompt });
+            // AGORA COM USER_ID PARA NÃO DAR ERRO 500
+            const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/chat`, {
+                user_id: session.user.id,
+                history: chatHistory.concat(userMsg),
+                persona: currentPersona.prompt
+            });
             setChatHistory(prev => [...prev, { role: "model", parts: res.data.response }]);
         } catch (e) { setChatHistory(prev => [...prev, { role: "model", parts: "Erro de conexão." }]); } finally { setChatLoading(false); }
     };
@@ -194,6 +222,7 @@ export default function Home() {
     let currentCost = mode === "image" ? (imageFiles.length > 1 || isEditing ? 10 : 10) : 50;
 
     return (
+        // LAYOUT TRAVADO NA TELA (SEM SCROLL NA JANELA)
         <main className="h-screen bg-[#050505] text-white flex flex-col font-sans overflow-hidden">
 
             {/* HEADER */}
@@ -202,6 +231,7 @@ export default function Home() {
                     <img src="/app-logo.png" alt="NastIA Logo" className="h-8 w-auto" />
                     <div className="hidden sm:block">
                         <h1 className="font-bold text-lg leading-none">NastIA Studio</h1>
+                        <p className="text-[10px] text-gray-500">Plataforma Criativa</p>
                     </div>
                 </div>
 
@@ -217,9 +247,9 @@ export default function Home() {
                     </div>
 
                     <div className="relative">
-                        <div className="relative cursor-pointer" onClick={toggleNotifications}>
-                            <Bell className="w-6 h-6 text-gray-400 hover:text-white" />
-                            {notifications.length > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#050505]"></span>}
+                        <div className="relative cursor-pointer p-2 hover:bg-gray-800 rounded-full" onClick={toggleNotifications}>
+                            <Bell className="w-5 h-5 text-gray-300" />
+                            {notifications.length > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#050505]"></span>}
                         </div>
 
                         {showNotifications && (
@@ -255,9 +285,9 @@ export default function Home() {
             {isEditorOpen && resultUrl && <ImageEditor imageUrl={resultUrl} onClose={() => setIsEditorOpen(false)} />}
             {isStoreOpen && <StoreModal userId={session.user.id} currentPlan={plan} referralCode={referralCode} onClose={() => setIsStoreOpen(false)} onUpdate={() => fetchProfile(session.user.id)} />}
             {isReferralOpen && referralCode && <GamifiedReferral userId={session.user.id} referralCode={referralCode} onClose={() => setIsReferralOpen(false)} />}
-
             <SupportWidget userId={session.user.id} userName={session.user.user_metadata.full_name} />
 
+            {/* Modal de Mídia Mobile */}
             {selectedMedia && (
                 <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setSelectedMedia(null)}>
                     <div className="bg-[#18181b] w-full max-w-sm rounded-2xl border border-gray-700 p-4 space-y-4" onClick={(e) => e.stopPropagation()}>
@@ -299,12 +329,13 @@ export default function Home() {
 
             <div className="flex-1 w-full flex flex-col overflow-hidden relative">
 
-                {/* MENU LATERAL (Apenas Desktop) */}
+                {/* MENU LATERAL (Desktop) */}
                 {mode !== 'home' && (
                     <div className="hidden md:flex flex-col gap-2 w-20 bg-[#0f0f10] border-r border-gray-800 items-center py-4 shrink-0 absolute left-0 top-0 bottom-0 z-20">
                         <button onClick={() => setMode("chat")} className={`p-3 rounded-xl transition-all ${mode === "chat" ? "bg-purple-600 text-white" : "text-gray-500 hover:bg-gray-800"}`} title="Chat"><MessageSquare className="w-6 h-6" /></button>
                         <button onClick={() => { setMode("image"); setImageFiles([]); }} className={`p-3 rounded-xl transition-all ${mode === "image" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-800"}`} title="Imagem"><ImageIcon className="w-6 h-6" /></button>
                         <button onClick={() => { setMode("video"); setImageFiles([]); setAspectRatio("16:9"); }} className={`p-3 rounded-xl transition-all ${mode === "video" ? "bg-orange-600 text-white" : "text-gray-500 hover:bg-gray-800"}`} title="Vídeo"><VideoIcon className="w-6 h-6" /></button>
+                        <button onClick={() => setMode("tryon")} className={`p-3 rounded-xl transition-all ${mode === "tryon" ? "bg-pink-600 text-white" : "text-gray-500 hover:bg-gray-800"}`} title="Provador"><Shirt className="w-6 h-6" /></button>
                         <button onClick={() => setMode("gallery")} className={`p-3 rounded-xl transition-all ${mode === "gallery" ? "bg-yellow-600 text-white" : "text-gray-500 hover:bg-gray-800"}`} title="Galeria"><Clock className="w-6 h-6" /></button>
                     </div>
                 )}
@@ -313,6 +344,7 @@ export default function Home() {
                 <div className={`flex-1 overflow-y-auto w-full p-4 py-6 ${mode !== 'home' ? 'md:pl-24' : ''}`}>
                     <div className="w-full max-w-6xl mx-auto space-y-6">
 
+                        {/* HOME PREMIUM */}
                         {mode === 'home' && (
                             <div className="w-full animate-in fade-in slide-in-from-bottom-4 space-y-8 pb-10 max-w-4xl mx-auto">
                                 <div className="text-center py-8">
@@ -340,7 +372,7 @@ export default function Home() {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                     <div onClick={() => setMode('chat')} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-purple-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg">
                                         <div className="bg-purple-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-purple-400"><MessageSquare className="w-7 h-7" /></div>
                                         <h3 className="font-bold text-xl text-white">Chat & Nah</h3>
@@ -356,6 +388,11 @@ export default function Home() {
                                         <h3 className="font-bold text-xl text-white">Criar Vídeos</h3>
                                         <p className="text-sm text-gray-400 mt-2 leading-relaxed">Transforme textos e imagens em vídeos cinematográficos.</p>
                                     </div>
+                                    <div onClick={() => setMode('tryon')} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-pink-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg">
+                                        <div className="bg-pink-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-pink-400"><Shirt className="w-7 h-7" /></div>
+                                        <h3 className="font-bold text-xl text-white">Provador</h3>
+                                        <p className="text-sm text-gray-400 mt-2 leading-relaxed">Vista roupas em fotos de forma realista (Beta).</p>
+                                    </div>
                                 </div>
 
                                 <div className="text-center pt-6">
@@ -364,12 +401,13 @@ export default function Home() {
                             </div>
                         )}
 
-                        {/* MENU TOPO MOBILE */}
+                        {/* MENU TOPO (MOBILE) */}
                         {mode !== 'home' && (
                             <div className="md:hidden flex w-full bg-gray-900 p-1.5 rounded-2xl border border-gray-800 overflow-x-auto shrink-0 mb-4 sticky top-0 z-20 shadow-xl">
                                 <button onClick={() => setMode("chat")} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "chat" ? "bg-purple-900/50 text-purple-200" : "text-gray-500"}`}>Chat</button>
                                 <button onClick={() => { setMode("image"); setImageFiles([]); }} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "image" ? "bg-blue-900/50 text-blue-200" : "text-gray-500"}`}>Img</button>
                                 <button onClick={() => { setMode("video"); setImageFiles([]); setAspectRatio("16:9"); }} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "video" ? "bg-orange-900/50 text-orange-200" : "text-gray-500"}`}>Vídeo</button>
+                                <button onClick={() => setMode("tryon")} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "tryon" ? "bg-pink-900/50 text-pink-200" : "text-gray-500"}`}>Provador</button>
                                 <button onClick={() => setMode("gallery")} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "gallery" ? "bg-yellow-900/50 text-yellow-200" : "text-gray-500"}`}>Galeria</button>
                             </div>
                         )}
@@ -418,9 +456,60 @@ export default function Home() {
                             </div>
                         )}
 
+                        {mode === "tryon" && (
+                            <div className="flex flex-col md:flex-row gap-6 w-full h-full max-w-7xl mx-auto items-start">
+                                <div className={`flex-1 flex flex-col gap-4 w-full ${resultUrl ? 'md:w-1/3' : 'md:max-w-xl md:mx-auto'}`}>
+                                    <div className="bg-[#0f0f10] border border-pink-500/30 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+                                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 opacity-30"></div>
+                                        <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-6"><Shirt className="w-5 h-5 text-pink-500" /> Provador Virtual</h3>
+
+                                        <div className="space-y-6">
+                                            <div className="space-y-2">
+                                                <label className="text-xs text-gray-400 font-bold uppercase flex justify-between">1. Foto da Pessoa <span>(Corpo Inteiro)</span></label>
+                                                <div className="relative group cursor-pointer" onClick={() => document.getElementById('input-person')?.click()}>
+                                                    <div className={`h-40 w-full rounded-xl border-2 border-dashed ${personFile ? 'border-pink-500' : 'border-gray-700'} flex items-center justify-center bg-[#121214] overflow-hidden hover:bg-[#1a1a1e] transition-colors`}>
+                                                        {personFile ? <img src={URL.createObjectURL(personFile)} className="w-full h-full object-cover" alt="pessoa" /> : <div className="text-center text-gray-500"><User className="w-8 h-8 mx-auto mb-2" /><span className="text-xs">Toque para enviar</span></div>}
+                                                    </div>
+                                                    <input id="input-person" type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && setPersonFile(e.target.files[0])} />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <label className="text-xs text-gray-400 font-bold uppercase flex justify-between">2. Foto da Roupa <span>(Fundo Liso)</span></label>
+                                                <div className="relative group cursor-pointer" onClick={() => document.getElementById('input-garment')?.click()}>
+                                                    <div className={`h-40 w-full rounded-xl border-2 border-dashed ${garmentFile ? 'border-pink-500' : 'border-gray-700'} flex items-center justify-center bg-[#121214] overflow-hidden hover:bg-[#1a1a1e] transition-colors`}>
+                                                        {garmentFile ? <img src={URL.createObjectURL(garmentFile)} className="w-full h-full object-cover" alt="roupa" /> : <div className="text-center text-gray-500"><Shirt className="w-8 h-8 mx-auto mb-2" /><span className="text-xs">Toque para enviar</span></div>}
+                                                    </div>
+                                                    <input id="input-garment" type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && setGarmentFile(e.target.files[0])} />
+                                                </div>
+                                            </div>
+
+                                            <button onClick={handleTryOn} disabled={loading || !personFile || !garmentFile} className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg ${loading || !personFile || !garmentFile ? "bg-gray-800 text-gray-500" : "bg-gradient-to-r from-pink-600 to-purple-600 text-white hover:scale-[1.02] transition-transform"}`}>
+                                                {loading ? "Provando..." : `Vestir Agora (-80 Créditos)`}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {resultUrl && !loading && (
+                                    <div className="flex-1 w-full md:w-2/3 bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl animate-in fade-in slide-in-from-right-4 h-fit sticky top-4">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-gray-400 flex items-center gap-2 font-medium"><Sparkles className="w-4 h-4 text-pink-500" /> Resultado</h3>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => handleShare(resultUrl, 'image')} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white"><Share2 className="w-4 h-4" /></button>
+                                                <button onClick={() => handleDownload(resultUrl, 'image')} className="p-2 bg-white text-black hover:bg-gray-200 rounded-lg"><Download className="w-4 h-4" /></button>
+                                            </div>
+                                        </div>
+                                        <div className="rounded-xl overflow-hidden border border-gray-800 bg-black/50 flex items-center justify-center">
+                                            <img src={resultUrl} className="max-w-full max-h-[70vh] object-contain shadow-2xl" alt="resultado" />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {(mode === "image" || mode === "video") && (
                             <div className="flex flex-col md:flex-row gap-6 w-full h-full max-w-7xl mx-auto items-start">
-                                {/* COLUNA ESQUERDA: CONTROLES */}
                                 <div className={`flex-1 flex flex-col gap-4 w-full ${resultUrl ? 'md:w-1/3' : 'md:max-w-2xl md:mx-auto'}`}>
                                     <div className="w-full bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
                                         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-500 via-orange-500 to-purple-500 opacity-20 group-hover:opacity-50 transition-opacity"></div>
@@ -477,7 +566,7 @@ export default function Home() {
                                             </div>
                                         </div>
                                         <div className="rounded-xl overflow-hidden border border-gray-800 bg-black/50 flex items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
-                                            {mode === "image" ? <img src={resultUrl} className="max-w-full max-h-[70vh] object-contain shadow-2xl" /> : <video src={resultUrl} controls autoPlay loop className="max-w-full max-h-[70vh] shadow-2xl" />}
+                                            {mode === "image" ? <img src={resultUrl} className="max-w-full max-h-[70vh] object-contain shadow-2xl" alt="result" /> : <video src={resultUrl} controls autoPlay loop className="max-w-full max-h-[70vh] shadow-2xl" />}
                                         </div>
                                     </div>
                                 )}
@@ -490,7 +579,7 @@ export default function Home() {
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                     {history.map((item) => (
                                         <div key={item.id} onClick={() => setSelectedMedia(item)} className="aspect-square bg-gray-900 rounded-xl overflow-hidden border border-gray-800 relative group cursor-pointer hover:border-white transition-colors">
-                                            {item.type === 'image' ? <img src={item.url} className="w-full h-full object-cover" /> : <video src={item.url} className="w-full h-full object-cover" muted />}
+                                            {item.type === 'image' ? <img src={item.url} className="w-full h-full object-cover" alt="gallery" /> : <video src={item.url} className="w-full h-full object-cover" muted />}
                                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                                 <Eye className="w-8 h-8 text-white drop-shadow-lg" />
                                             </div>
@@ -504,7 +593,7 @@ export default function Home() {
             </div>
 
             {/* FOOTER COMPACTO (Slim) */}
-            <footer className="h-8 bg-[#0a0a0a] border-t border-gray-800 flex justify-center items-center gap-4 text-[10px] text-gray-600 shrink-0 z-30">
+            <footer className="h-[30px] bg-[#0a0a0a] border-t border-gray-900 flex justify-center items-center gap-4 text-[10px] text-gray-600 shrink-0 z-30">
                 <span>© 2025 NastIA Studio</span>
                 <span className="w-1 h-1 bg-gray-800 rounded-full"></span>
                 <a href="https://instagram.com/nastia.tec" target="_blank" className="hover:text-white">Instagram</a>
