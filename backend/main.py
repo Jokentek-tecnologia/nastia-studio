@@ -45,9 +45,10 @@ app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
 
+# --- PREÇOS ---
 COST_IMAGE = 10
 COST_VIDEO = 50
-COST_TRYON = 80
+COST_TRYON = 10 # Ajustado para 10 conforme pedido
 
 class ChatRequest(BaseModel):
     user_id: str
@@ -147,7 +148,7 @@ def get_vertex_token():
         return None
 
 @app.get("/")
-def read_root(): return {"status": "NastIA V17 (TryOn Ready) Online 🚀"}
+def read_root(): return {"status": "NastIA Studio V17 (Restrict Video) Online 🚀"}
 
 @app.post("/generate-image")
 async def generate_image(
@@ -208,7 +209,16 @@ async def generate_video(
 ):
     cost = COST_VIDEO
     try:
+        # 1. Cobrança e VERIFICAÇÃO DE PLANO
         user_plan = check_and_deduct_credits(user_id, cost)
+        
+        # --- TRAVA DE PLANO PARA VÍDEO ---
+        if user_plan not in ["plus", "pro", "agency", "criação"]:
+            # Devolve o crédito que acabou de tirar
+            refund_credits(user_id, cost)
+            raise HTTPException(403, "Geração de vídeos disponível apenas nos planos Plus e Pro.")
+        # ---------------------------------
+
         model = "veo-3.1-generate-preview"
         veo_params = { "model": model, "prompt": prompt, "config": types.GenerateVideosConfig(number_of_videos=1, aspect_ratio=aspect_ratio) }
         if file_start:
@@ -227,9 +237,13 @@ async def generate_video(
             return {"video": public_url}
         raise Exception("API Veo falhou.")
     except Exception as e:
-        refund_credits(user_id, cost)
+        # Se o erro não for o 403 (plano), devolve crédito
+        if "403" not in str(e):
+            refund_credits(user_id, cost)
         print(f"Erro Vídeo: {e}")
-        raise HTTPException(500, str(e))
+        # Repassa o erro correto (403 ou 500)
+        status = 403 if "disponível apenas" in str(e) else 500
+        raise HTTPException(status, str(e))
 
 @app.post("/generate-tryon")
 async def generate_tryon(
@@ -238,7 +252,7 @@ async def generate_tryon(
     user_id: str = Form(...),
     category: str = Form("tops")
 ):
-    cost = COST_TRYON
+    cost = COST_TRYON # Valor 10
     try:
         check_and_deduct_credits(user_id, cost)
         token = get_vertex_token()
