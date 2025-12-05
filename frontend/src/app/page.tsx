@@ -15,13 +15,14 @@ import Login from "../components/Login";
 import StoreModal from "../components/StoreModal";
 import AdPlayer from "../components/AdPlayer";
 import GamifiedReferral from "../components/GamifiedReferral";
+import ApiKeyModal from "../components/ApiKeyModal";
 import SupportWidget from "../components/SupportWidget";
 
-const ImageEditor = dynamic(() => import("../components/ImageEditor"), { ssr: false, loading: () => <div className="text-white text-center p-10">Carregando...</div> });
+// Carregamento dinâmico do editor
+const ImageEditor = dynamic(() => import("../components/ImageEditor"), { ssr: false, loading: () => <div className="text-white text-center p-10">Carregando Editor...</div> });
 
-// LINKS DE ADS (Exemplo - Troque pelos do seu Supabase)
-const SHORT_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
-const LONG_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
+const SHORT_ADS = ["https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"];
+const LONG_ADS = ["https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"];
 
 const ASPECT_RATIOS = [
     { value: "16:9", label: "Horizontal (16:9)" }, { value: "9:16", label: "Vertical (9:16)" },
@@ -50,6 +51,7 @@ export default function Home() {
     const [isMobile, setIsMobile] = useState(false);
     const [aspectRatio, setAspectRatio] = useState<string>("16:9");
 
+    // Try-On States
     const [personFile, setPersonFile] = useState<File | null>(null);
     const [garmentFile, setGarmentFile] = useState<File | null>(null);
 
@@ -71,12 +73,12 @@ export default function Home() {
 
     const [selectedMedia, setSelectedMedia] = useState<any>(null);
 
+    // Chat States
     const [chatHistory, setChatHistory] = useState<{ role: string, parts: string }[]>([]);
     const [chatInput, setChatInput] = useState("");
     const [chatLoading, setChatLoading] = useState(false);
     const [currentPersona, setCurrentPersona] = useState(PERSONAS[0]);
     const chatEndRef = useRef<HTMLDivElement>(null);
-
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -87,7 +89,13 @@ export default function Home() {
 
     const fetchProfile = async (userId: string) => {
         const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (data) { setCredits(data.credits); setPlan(data.plan_tier); setReferralCode(data.referral_code); setCoins(data.coins || 0); }
+        if (data) {
+            setCredits(data.credits);
+            setPlan(data.plan_tier);
+            setReferralCode(data.referral_code);
+            setCoins(data.coins || 0);
+            if (data.custom_api_key) setHasCustomKey(true);
+        }
     };
 
     const fetchHistory = async (userId: string) => {
@@ -120,7 +128,7 @@ export default function Home() {
 
     const handleEditFromGallery = async (url: string) => { setResultUrl(url); setIsEditorOpen(true); setSelectedMedia(null); }
     const handleMobileEditClick = () => { alert("Para editar, use o chat."); };
-    const prepareAd = () => { const list = mode === "image" || mode === "tryon" ? SHORT_ADS : LONG_ADS; setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]); setAdProgress(0); };
+    const prepareAd = () => { const list = mode === "image" ? SHORT_ADS : LONG_ADS; setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]); setAdProgress(0); };
 
     const handleGenerate = async () => {
         if (!prompt) return;
@@ -129,8 +137,7 @@ export default function Home() {
         if (mode === "image" && (imageFiles.length > 1 || isEditingContext)) cost = 10;
         if (mode === "video") cost = 50;
 
-        if (credits < cost) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
-
+        if (credits < cost && !hasCustomKey) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
         if (mode === "video" && !["plus", "pro", "agency", "criação"].includes(plan)) { alert("Vídeos são exclusivos para assinantes Plus e Pro."); setIsStoreOpen(true); return; }
 
         prepareAd(); setLoading(true); const previousResult = resultUrl; setResultUrl(null); setPendingResult(null);
@@ -152,15 +159,11 @@ export default function Home() {
         } catch (error: any) { alert(error.response?.data?.detail || "Erro."); setLoading(false); if (mode === "image") setResultUrl(previousResult); }
     };
 
-    // --- TRY-ON CORRIGIDO COM ANÚNCIO ---
     const handleTryOn = async () => {
         if (!personFile || !garmentFile) return alert("Selecione as duas fotos.");
         if (credits < 10) { alert("Saldo insuficiente."); setIsStoreOpen(true); return; }
 
-        prepareAd(); // Inicia Anúncio
-        setLoading(true);
-        setResultUrl(null);
-        setPendingResult(null);
+        prepareAd(); setLoading(true); setResultUrl(null); setPendingResult(null);
 
         const formData = new FormData();
         formData.append("user_id", session.user.id);
@@ -169,12 +172,8 @@ export default function Home() {
 
         try {
             const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/generate-tryon`, formData, { headers: { "Content-Type": "multipart/form-data" } });
-            fetchProfile(session.user.id);
-            setPendingResult(res.data.image); // Espera o anúncio
-        } catch (error: any) {
-            alert(error.response?.data?.detail || "Erro.");
-            setLoading(false);
-        }
+            fetchProfile(session.user.id); setPendingResult(res.data.image);
+        } catch (error: any) { alert(error.response?.data?.detail || "Erro."); setLoading(false); }
     };
 
     const handleChatSend = async () => {
@@ -189,10 +188,8 @@ export default function Home() {
         } catch (e) { setChatHistory(prev => [...prev, { role: "model", parts: "Erro de conexão." }]); } finally { setChatLoading(false); }
     };
 
-    // ATUALIZADO PARA ACEITAR TRYON
     const handleAdEnded = () => { if ((mode === "image" || mode === "tryon") && pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
     const handleSkipAd = () => { if (pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
-
     const copyReferral = () => { navigator.clipboard.writeText(`https://nastia-studio.netlify.app?ref=${referralCode}`); alert("Link Copiado!"); }
     const handleDownload = (url: string, type: string) => { const link = document.createElement("a"); link.href = url; link.download = `NastIA.${type === 'image' ? 'jpg' : 'mp4'}`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
     const handleShare = async (url: string, type: string) => { if (navigator.share) try { const res = await fetch(url); const blob = await res.blob(); await navigator.share({ files: [new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type })] }); } catch (e) { } else alert("Use Baixar."); };
@@ -211,7 +208,7 @@ export default function Home() {
         <main className="h-screen bg-[#050505] text-white flex flex-col font-sans overflow-hidden">
             <header className="h-16 shrink-0 border-b border-gray-800 bg-black/50 backdrop-blur-md flex justify-between items-center px-4 z-30">
                 <div className="flex items-center gap-3 cursor-pointer" onClick={() => setMode('home')}>
-                    <img src="/app-logo.png" alt="NastIA" className="h-8 w-auto" />
+                    <img src="/app-logo.png" alt="NastIA Logo" className="h-8 w-auto" />
                     <div className="hidden sm:block"><h1 className="font-bold text-lg leading-none">NastIA Studio</h1></div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -386,6 +383,10 @@ export default function Home() {
                                         <div className="flex justify-between items-center mb-4">
                                             <h3 className="text-gray-400 flex items-center gap-2 font-medium"><Sparkles className="w-4 h-4 text-green-500" /> Resultado</h3>
                                             <div className="flex gap-2">
+                                                {/* BOTÃO ANIMAR (SÓ PARA IMAGEM) */}
+                                                {mode === "image" && (
+                                                    <button onClick={() => handleTransformToVideo(resultUrl)} className="p-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-white transition-colors" title="Animar"><PlayCircle className="w-4 h-4" /></button>
+                                                )}
                                                 <button onClick={() => handleShare(resultUrl, mode)} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white"><Share2 className="w-4 h-4" /></button>
                                                 <button onClick={() => handleDownload(resultUrl, mode)} className="p-2 bg-white text-black hover:bg-gray-200 rounded-lg"><Download className="w-4 h-4" /></button>
                                             </div>
