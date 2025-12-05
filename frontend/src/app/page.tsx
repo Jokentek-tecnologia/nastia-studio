@@ -4,11 +4,10 @@ import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import {
     Sparkles, Image as ImageIcon, Video as VideoIcon, Shirt,
-    Film, XCircle, Edit, LogOut, Coins, Gift,
+    Film, XCircle, Edit, LogOut, Coins, Gift, Key,
     Share2, Download, Instagram, Globe, MessageCircle, Plus, Copy,
     ArrowRightCircle, Layers, Clock, CheckCircle, Bell, ExternalLink, ChevronDown,
-    X, MessageSquare, Send, Bot, PlayCircle, Eye, Headphones, Upload,
-    User
+    X, MessageSquare, Send, Bot, Zap, PlayCircle, Eye, Headphones, Upload
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { supabase } from "../lib/supabase";
@@ -18,11 +17,10 @@ import AdPlayer from "../components/AdPlayer";
 import GamifiedReferral from "../components/GamifiedReferral";
 import SupportWidget from "../components/SupportWidget";
 
-// Carregamento dinâmico do editor (Evita erro de 'window not defined')
-const ImageEditor = dynamic(() => import("../components/ImageEditor"), { ssr: false, loading: () => <div className="text-white text-center p-10">Carregando Editor...</div> });
+const ImageEditor = dynamic(() => import("../components/ImageEditor"), { ssr: false, loading: () => <div className="text-white text-center p-10">Carregando...</div> });
 
-// Anúncios (Mantidos para monetização futura/loading)
-const SHORT_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"];
+// LINKS DE ADS (Exemplo - Troque pelos do seu Supabase)
+const SHORT_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 const LONG_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 
 const ASPECT_RATIOS = [
@@ -39,7 +37,6 @@ const PERSONAS = [
 ];
 
 export default function Home() {
-    // Estados Globais
     const [session, setSession] = useState<any>(null);
     const [credits, setCredits] = useState<number>(0);
     const [coins, setCoins] = useState<number>(0);
@@ -47,44 +44,41 @@ export default function Home() {
     const [referralCode, setReferralCode] = useState<string>("");
     const [authLoading, setAuthLoading] = useState(true);
 
-    // Navegação
     const [mode, setMode] = useState<"home" | "image" | "video" | "gallery" | "chat" | "tryon">("home");
-
-    // Estados de Criação
     const [prompt, setPrompt] = useState("");
     const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [isMobile, setIsMobile] = useState(false);
     const [aspectRatio, setAspectRatio] = useState<string>("16:9");
 
-    // Estados Try-On
     const [personFile, setPersonFile] = useState<File | null>(null);
     const [garmentFile, setGarmentFile] = useState<File | null>(null);
 
-    // Estados de Resultado e UI
     const [resultUrl, setResultUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [currentAdUrl, setCurrentAdUrl] = useState("");
     const [pendingResult, setPendingResult] = useState<string | null>(null);
     const [adProgress, setAdProgress] = useState(0);
+
     const [history, setHistory] = useState<any[]>([]);
     const [notifications, setNotifications] = useState<any[]>([]);
     const [showNotifications, setShowNotifications] = useState(false);
 
-    // Modais
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isStoreOpen, setIsStoreOpen] = useState(false);
     const [isReferralOpen, setIsReferralOpen] = useState(false);
-    const [selectedMedia, setSelectedMedia] = useState<any>(null); // Modal Galeria Mobile
+    const [isApiKeyOpen, setIsApiKeyOpen] = useState(false);
+    const [hasCustomKey, setHasCustomKey] = useState(false);
 
-    // Chat
+    const [selectedMedia, setSelectedMedia] = useState<any>(null);
+
     const [chatHistory, setChatHistory] = useState<{ role: string, parts: string }[]>([]);
     const [chatInput, setChatInput] = useState("");
     const [chatLoading, setChatLoading] = useState(false);
     const [currentPersona, setCurrentPersona] = useState(PERSONAS[0]);
     const chatEndRef = useRef<HTMLDivElement>(null);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Inicialização
     useEffect(() => {
         const check = () => setIsMobile(window.innerWidth < 768);
         check(); window.addEventListener('resize', check);
@@ -93,12 +87,7 @@ export default function Home() {
 
     const fetchProfile = async (userId: string) => {
         const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (data) {
-            setCredits(data.credits);
-            setPlan(data.plan_tier);
-            setReferralCode(data.referral_code);
-            setCoins(data.coins || 0);
-        }
+        if (data) { setCredits(data.credits); setPlan(data.plan_tier); setReferralCode(data.referral_code); setCoins(data.coins || 0); }
     };
 
     const fetchHistory = async (userId: string) => {
@@ -111,21 +100,9 @@ export default function Home() {
         if (data) setNotifications(data);
     };
 
-    const handleLoginSuccess = async (session: any) => {
-        fetchProfile(session.user.id);
-        fetchHistory(session.user.id);
-        fetchNotifications();
-    };
-
-    useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); if (session) handleLoginSuccess(session); setAuthLoading(false); });
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => { setSession(session); if (session) handleLoginSuccess(session); else setAuthLoading(false); });
-        return () => subscription.unsubscribe();
-    }, []);
-
+    const handleLoginSuccess = async (session: any) => { fetchProfile(session.user.id); fetchHistory(session.user.id); fetchNotifications(); };
+    useEffect(() => { supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); if (session) handleLoginSuccess(session); setAuthLoading(false); }); const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => { setSession(session); if (session) handleLoginSuccess(session); else setAuthLoading(false); }); return () => subscription.unsubscribe(); }, []);
     useEffect(() => { if (mode === 'chat') chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory, mode]);
-
-    // Handlers de Ação
     const handleLogout = async () => await supabase.auth.signOut();
     const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files) { const newFiles = Array.from(e.target.files); if (mode === "video") setImageFiles([newFiles[0]]); else setImageFiles(prev => [...prev, ...newFiles].slice(0, 8)); } };
     const removeImage = (index: number) => { setImageFiles(prev => prev.filter((_, i) => i !== index)); };
@@ -135,13 +112,15 @@ export default function Home() {
         const urlToUse = targetUrl || resultUrl || selectedMedia?.url;
         if (!urlToUse) return;
         try {
+            if (!["plus", "pro", "agency", "criação"].includes(plan)) { alert("A criação de vídeo é exclusiva para planos Plus e Pro."); setIsStoreOpen(true); return; }
             const res = await fetch(urlToUse); const blob = await res.blob(); const file = new File([blob], "base.jpg", { type: "image/jpeg" });
             setMode("video"); setImageFiles([file]); setResultUrl(null); setPrompt(""); setSelectedMedia(null);
         } catch (e) { }
     };
 
     const handleEditFromGallery = async (url: string) => { setResultUrl(url); setIsEditorOpen(true); setSelectedMedia(null); }
-    const prepareAd = () => { const list = mode === "image" ? SHORT_ADS : LONG_ADS; setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]); setAdProgress(0); };
+    const handleMobileEditClick = () => { alert("Para editar, use o chat."); };
+    const prepareAd = () => { const list = mode === "image" || mode === "tryon" ? SHORT_ADS : LONG_ADS; setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]); setAdProgress(0); };
 
     const handleGenerate = async () => {
         if (!prompt) return;
@@ -152,6 +131,8 @@ export default function Home() {
 
         if (credits < cost) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
 
+        if (mode === "video" && !["plus", "pro", "agency", "criação"].includes(plan)) { alert("Vídeos são exclusivos para assinantes Plus e Pro."); setIsStoreOpen(true); return; }
+
         prepareAd(); setLoading(true); const previousResult = resultUrl; setResultUrl(null); setPendingResult(null);
         const formData = new FormData(); formData.append("user_id", session.user.id); formData.append("aspect_ratio", aspectRatio);
 
@@ -160,10 +141,7 @@ export default function Home() {
         try {
             if (mode === "image") {
                 if (imageFiles.length > 0) imageFiles.forEach(file => formData.append("files", file));
-                // ENVIA URL PARA EDIÇÃO (Mais estável que Base64)
-                else if (previousResult && isEditingContext) {
-                    formData.append("context_url", previousResult);
-                }
+                else if (previousResult && isEditingContext) { formData.append("context_url", previousResult); }
             } else { if (imageFiles.length > 0) formData.append("file_start", imageFiles[0]); }
 
             const endpoint = mode === "image" ? `${process.env.NEXT_PUBLIC_API_URL}/generate-image` : `${process.env.NEXT_PUBLIC_API_URL}/generate-video`;
@@ -174,18 +152,29 @@ export default function Home() {
         } catch (error: any) { alert(error.response?.data?.detail || "Erro."); setLoading(false); if (mode === "image") setResultUrl(previousResult); }
     };
 
+    // --- TRY-ON CORRIGIDO COM ANÚNCIO ---
     const handleTryOn = async () => {
-        if (!personFile || !garmentFile) { alert("Envie as duas fotos."); return; }
-        if (credits < 80) { alert("Saldo insuficiente (80 créditos)."); setIsStoreOpen(true); return; }
+        if (!personFile || !garmentFile) return alert("Selecione as duas fotos.");
+        if (credits < 10) { alert("Saldo insuficiente."); setIsStoreOpen(true); return; }
+
+        prepareAd(); // Inicia Anúncio
         setLoading(true);
+        setResultUrl(null);
+        setPendingResult(null);
+
         const formData = new FormData();
         formData.append("user_id", session.user.id);
         formData.append("person_image", personFile);
         formData.append("garment_image", garmentFile);
+
         try {
             const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/generate-tryon`, formData, { headers: { "Content-Type": "multipart/form-data" } });
-            fetchProfile(session.user.id); setResultUrl(res.data.image); setLoading(false);
-        } catch (error: any) { alert(error.response?.data?.detail || "Erro no Provador."); setLoading(false); }
+            fetchProfile(session.user.id);
+            setPendingResult(res.data.image); // Espera o anúncio
+        } catch (error: any) {
+            alert(error.response?.data?.detail || "Erro.");
+            setLoading(false);
+        }
     };
 
     const handleChatSend = async () => {
@@ -195,18 +184,15 @@ export default function Home() {
         setChatInput("");
         setChatLoading(true);
         try {
-            // AGORA COM USER_ID PARA NÃO DAR ERRO 500
-            const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/chat`, {
-                user_id: session.user.id,
-                history: chatHistory.concat(userMsg),
-                persona: currentPersona.prompt
-            });
+            const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/chat`, { user_id: session.user.id, history: chatHistory.concat(userMsg), persona: currentPersona.prompt });
             setChatHistory(prev => [...prev, { role: "model", parts: res.data.response }]);
         } catch (e) { setChatHistory(prev => [...prev, { role: "model", parts: "Erro de conexão." }]); } finally { setChatLoading(false); }
     };
 
-    const handleAdEnded = () => { if (mode === "image" && pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
+    // ATUALIZADO PARA ACEITAR TRYON
+    const handleAdEnded = () => { if ((mode === "image" || mode === "tryon") && pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
     const handleSkipAd = () => { if (pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
+
     const copyReferral = () => { navigator.clipboard.writeText(`https://nastia-studio.netlify.app?ref=${referralCode}`); alert("Link Copiado!"); }
     const handleDownload = (url: string, type: string) => { const link = document.createElement("a"); link.href = url; link.download = `NastIA.${type === 'image' ? 'jpg' : 'mp4'}`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
     const handleShare = async (url: string, type: string) => { if (navigator.share) try { const res = await fetch(url); const blob = await res.blob(); await navigator.share({ files: [new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type })] }); } catch (e) { } else alert("Use Baixar."); };
@@ -222,62 +208,25 @@ export default function Home() {
     let currentCost = mode === "image" ? (imageFiles.length > 1 || isEditing ? 10 : 10) : 50;
 
     return (
-        // LAYOUT TRAVADO NA TELA (SEM SCROLL NA JANELA)
         <main className="h-screen bg-[#050505] text-white flex flex-col font-sans overflow-hidden">
-
-            {/* HEADER */}
             <header className="h-16 shrink-0 border-b border-gray-800 bg-black/50 backdrop-blur-md flex justify-between items-center px-4 z-30">
                 <div className="flex items-center gap-3 cursor-pointer" onClick={() => setMode('home')}>
-                    <img src="/app-logo.png" alt="NastIA Logo" className="h-8 w-auto" />
-                    <div className="hidden sm:block">
-                        <h1 className="font-bold text-lg leading-none">NastIA Studio</h1>
-                        <p className="text-[10px] text-gray-500">Plataforma Criativa</p>
-                    </div>
+                    <img src="/app-logo.png" alt="NastIA" className="h-8 w-auto" />
+                    <div className="hidden sm:block"><h1 className="font-bold text-lg leading-none">NastIA Studio</h1></div>
                 </div>
-
                 <div className="flex items-center gap-3">
-                    <button onClick={() => setIsReferralOpen(true)} className="flex items-center gap-2 bg-gradient-to-r from-purple-900 to-pink-900 border border-purple-500/30 p-2 md:px-3 md:py-1 rounded-full hover:scale-105 transition-transform">
-                        <Gift className="w-4 h-4 text-pink-400" /> <span className="text-xs font-bold text-pink-100 hidden md:inline">Prêmios</span>
-                    </button>
-
-                    <div className="flex flex-col items-end cursor-pointer hover:opacity-80 transition-opacity" onClick={toggleStore}>
-                        <div className="flex items-center gap-1 text-yellow-500 font-bold">
-                            <Coins className="w-4 h-4" /> <span className="text-sm">{credits}</span>
-                        </div>
-                    </div>
-
+                    <button onClick={() => setIsReferralOpen(true)} className="flex items-center gap-2 bg-gradient-to-r from-purple-900 to-pink-900 border border-purple-500/30 p-2 md:px-3 md:py-1 rounded-full hover:scale-105 transition-transform"><Gift className="w-4 h-4 text-pink-400" /> <span className="text-xs font-bold text-pink-100 hidden md:inline">Prêmios</span></button>
+                    <div className="flex flex-col items-end cursor-pointer hover:opacity-80 transition-opacity" onClick={toggleStore}><div className="flex items-center gap-1 text-yellow-500 font-bold"><Coins className="w-4 h-4" /> <span className="text-sm">{credits}</span></div></div>
                     <div className="relative">
-                        <div className="relative cursor-pointer p-2 hover:bg-gray-800 rounded-full" onClick={toggleNotifications}>
-                            <Bell className="w-5 h-5 text-gray-300" />
-                            {notifications.length > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#050505]"></span>}
-                        </div>
-
+                        <div className="relative cursor-pointer p-2 hover:bg-gray-800 rounded-full" onClick={toggleNotifications}><Bell className="w-5 h-5 text-gray-300" />{notifications.length > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#050505]"></span>}</div>
                         {showNotifications && (
                             <div className="fixed top-16 right-4 z-50 w-72 bg-[#18181b] border border-gray-700 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
-                                <div className="p-3 border-b border-gray-800 text-xs font-bold text-gray-400 flex justify-between items-center">
-                                    <span>Notificações</span>
-                                    <button onClick={() => setShowNotifications(false)}><X className="w-4 h-4" /></button>
-                                </div>
-                                <div className="max-h-60 overflow-y-auto bg-[#18181b]">
-                                    {notifications.length === 0 ? (
-                                        <div className="p-4 text-center text-xs text-gray-600">Nenhuma notificação.</div>
-                                    ) : (
-                                        notifications.map(n => (
-                                            <div key={n.id} className="p-3 border-b border-gray-800 hover:bg-gray-800/50 cursor-pointer">
-                                                <h4 className="text-sm font-bold text-white mb-1">{n.title}</h4>
-                                                <p className="text-xs text-gray-400 leading-relaxed">{n.message}</p>
-                                                {n.link && <a href={n.link} target="_blank" className="text-[10px] text-yellow-500 hover:underline mt-2 block flex items-center gap-1">Ver mais <ExternalLink className="w-3 h-3" /></a>}
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                                <div className="p-2 border-t border-gray-700 bg-[#121214]">
-                                    <button onClick={handleLogout} className="w-full text-left text-xs text-red-400 p-2 hover:bg-red-900/20 rounded flex gap-2 items-center justify-center font-bold"><LogOut className="w-3 h-3" /> Sair da Conta</button>
-                                </div>
+                                <div className="p-3 border-b border-gray-800 text-xs font-bold text-gray-400 flex justify-between items-center"><span>Notificações</span><button onClick={() => setShowNotifications(false)}><X className="w-4 h-4" /></button></div>
+                                <div className="max-h-60 overflow-y-auto bg-[#18181b]">{notifications.length === 0 ? <div className="p-4 text-center text-xs text-gray-600">Nenhuma notificação.</div> : notifications.map(n => <div key={n.id} className="p-3 border-b border-gray-800 hover:bg-gray-800/50 cursor-pointer"><h4 className="text-sm font-bold text-white mb-1">{n.title}</h4><p className="text-xs text-gray-400">{n.message}</p></div>)}</div>
+                                <div className="p-2 border-t border-gray-700 bg-[#121214]"><button onClick={handleLogout} className="w-full text-left text-xs text-red-400 p-2 hover:bg-red-900/20 rounded flex gap-2 items-center justify-center font-bold"><LogOut className="w-3 h-3" /> Sair da Conta</button></div>
                             </div>
                         )}
                     </div>
-
                     <img src={session.user.user_metadata.avatar_url} className="w-8 h-8 rounded-full border border-gray-700 ml-1" />
                 </div>
             </header>
@@ -287,49 +236,21 @@ export default function Home() {
             {isReferralOpen && referralCode && <GamifiedReferral userId={session.user.id} referralCode={referralCode} onClose={() => setIsReferralOpen(false)} />}
             <SupportWidget userId={session.user.id} userName={session.user.user_metadata.full_name} />
 
-            {/* Modal de Mídia Mobile */}
             {selectedMedia && (
                 <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setSelectedMedia(null)}>
                     <div className="bg-[#18181b] w-full max-w-sm rounded-2xl border border-gray-700 p-4 space-y-4" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex justify-between items-center border-b border-gray-800 pb-2">
-                            <h3 className="font-bold text-white">Visualizar</h3>
-                            <button onClick={() => setSelectedMedia(null)}><X className="w-5 h-5 text-gray-400" /></button>
-                        </div>
-                        <div className="rounded-xl overflow-hidden bg-black aspect-square flex items-center justify-center">
-                            {selectedMedia.type === 'image' ? <img src={selectedMedia.url} className="w-full h-full object-contain" /> : <video src={selectedMedia.url} controls className="w-full h-full" />}
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                            <button onClick={() => handleDownload(selectedMedia.url, selectedMedia.type)} className="bg-white text-black py-3 rounded-xl font-bold flex items-center justify-center gap-2"><Download className="w-4 h-4" /> Baixar</button>
-                            <button onClick={() => handleShare(selectedMedia.url, selectedMedia.type)} className="bg-gray-800 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"><Share2 className="w-4 h-4" /> Enviar</button>
-                            {selectedMedia.type === 'image' && (
-                                <button onClick={() => handleTransformToVideo(null)} className="bg-blue-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 col-span-2"><PlayCircle className="w-4 h-4" /> Criar Vídeo</button>
-                            )}
-                        </div>
+                        <div className="flex justify-between items-center border-b border-gray-800 pb-2"><h3 className="font-bold text-white">Visualizar</h3><button onClick={() => setSelectedMedia(null)}><X className="w-5 h-5 text-gray-400" /></button></div>
+                        <div className="rounded-xl overflow-hidden bg-black aspect-square flex items-center justify-center">{selectedMedia.type === 'image' ? <img src={selectedMedia.url} className="w-full h-full object-contain" /> : <video src={selectedMedia.url} controls className="w-full h-full" />}</div>
+                        <div className="grid grid-cols-2 gap-2"><button onClick={() => handleDownload(selectedMedia.url, selectedMedia.type)} className="bg-white text-black py-3 rounded-xl font-bold flex items-center justify-center gap-2"><Download className="w-4 h-4" /> Baixar</button><button onClick={() => handleShare(selectedMedia.url, selectedMedia.type)} className="bg-gray-800 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"><Share2 className="w-4 h-4" /> Enviar</button>{selectedMedia.type === 'image' && <button onClick={() => handleTransformToVideo(null)} className="bg-blue-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 col-span-2"><PlayCircle className="w-4 h-4" /> Criar Vídeo</button>}</div>
                     </div>
                 </div>
             )}
 
             {loading && (
-                <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center">
-                    {pendingResult && (
-                        <button onClick={handleSkipAd} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-green-500 text-black px-8 py-4 rounded-full font-bold text-xl shadow-2xl animate-bounce flex items-center gap-2 hover:bg-green-400 transition-all cursor-pointer">
-                            <CheckCircle className="w-6 h-6" /> VER RESULTADO AGORA
-                        </button>
-                    )}
-                    <div className="absolute top-8 right-8 flex items-center gap-2 text-yellow-500 animate-pulse z-20">
-                        <Sparkles className="w-5 h-5" />
-                        <span className="font-bold tracking-widest">{pendingResult ? "PRONTO!" : "CRIANDO..."}</span>
-                    </div>
-                    <div className="w-full h-full absolute inset-0">
-                        <AdPlayer src={currentAdUrl} onEnded={handleAdEnded} />
-                    </div>
-                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} /></div>
-                </div>
+                <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center"><div className="animate-pulse text-yellow-500 mb-4"><Sparkles className="w-8 h-8 mx-auto" /></div><div className="w-full h-full absolute inset-0"><AdPlayer src={currentAdUrl} onEnded={handleAdEnded} /></div><div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} /></div></div>
             )}
 
             <div className="flex-1 w-full flex flex-col overflow-hidden relative">
-
-                {/* MENU LATERAL (Desktop) */}
                 {mode !== 'home' && (
                     <div className="hidden md:flex flex-col gap-2 w-20 bg-[#0f0f10] border-r border-gray-800 items-center py-4 shrink-0 absolute left-0 top-0 bottom-0 z-20">
                         <button onClick={() => setMode("chat")} className={`p-3 rounded-xl transition-all ${mode === "chat" ? "bg-purple-600 text-white" : "text-gray-500 hover:bg-gray-800"}`} title="Chat"><MessageSquare className="w-6 h-6" /></button>
@@ -340,68 +261,25 @@ export default function Home() {
                     </div>
                 )}
 
-                {/* AREA DE CONTEUDO */}
                 <div className={`flex-1 overflow-y-auto w-full p-4 py-6 ${mode !== 'home' ? 'md:pl-24' : ''}`}>
                     <div className="w-full max-w-6xl mx-auto space-y-6">
-
-                        {/* HOME PREMIUM */}
                         {mode === 'home' && (
                             <div className="w-full animate-in fade-in slide-in-from-bottom-4 space-y-8 pb-10 max-w-4xl mx-auto">
-                                <div className="text-center py-8">
-                                    <h2 className="text-4xl font-bold text-white mb-2 tracking-tight">Olá, <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">{session.user.user_metadata.full_name?.split(' ')[0]}</span> 👋</h2>
-                                    <p className="text-lg text-gray-400">Pronto para criar algo incrível?</p>
-                                </div>
-
+                                <div className="text-center py-8"><h2 className="text-4xl font-bold text-white mb-2 tracking-tight">Olá, <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">{session.user.user_metadata.full_name?.split(' ')[0]}</span> 👋</h2><p className="text-lg text-gray-400">Pronto para criar algo incrível?</p></div>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-gradient-to-br from-[#121214] to-[#1a1a1e] border border-gray-800 p-6 rounded-3xl flex flex-col justify-between relative overflow-hidden cursor-pointer hover:border-yellow-500/30 transition-all shadow-xl" onClick={toggleStore}>
-                                        <div className="absolute -top-4 -right-4 p-2 opacity-10"><Coins className="w-24 h-24 text-yellow-500" /></div>
-                                        <span className="text-sm font-bold text-gray-400 uppercase tracking-widest">Saldo Atual</span>
-                                        <div className="flex items-end gap-2 mt-4">
-                                            <span className="text-4xl font-black text-white">{credits}</span>
-                                            <span className="text-xs text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded-full uppercase font-bold mb-1 border border-yellow-500/20">{plan}</span>
-                                        </div>
-                                    </div>
-                                    <div className="bg-gradient-to-br from-[#121214] to-[#1a1a1e] border border-gray-800 p-6 rounded-3xl flex flex-col justify-between cursor-pointer hover:border-purple-500/30 transition-all shadow-xl" onClick={() => setIsReferralOpen(true)}>
-                                        <span className="text-sm font-bold text-gray-400 uppercase tracking-widest">Nível de Prêmios</span>
-                                        <div className="w-full bg-gray-800 h-3 rounded-full mt-4 overflow-hidden relative">
-                                            <div className="bg-gradient-to-r from-purple-500 to-pink-500 h-full relative" style={{ width: `${Math.min((coins / 250) * 100, 100)}%` }}>
-                                                <div className="absolute right-0 top-0 bottom-0 w-2 bg-white/50 animate-pulse"></div>
-                                            </div>
-                                        </div>
-                                        <span className="text-xs text-right text-gray-500 mt-2 font-mono">{coins}/250 Moedas</span>
-                                    </div>
+                                    <div className="bg-gradient-to-br from-[#121214] to-[#1a1a1e] border border-gray-800 p-6 rounded-3xl flex flex-col justify-between relative overflow-hidden cursor-pointer hover:border-yellow-500/30 transition-all shadow-xl" onClick={toggleStore}><div className="absolute -top-4 -right-4 p-2 opacity-10"><Coins className="w-24 h-24 text-yellow-500" /></div><span className="text-sm font-bold text-gray-400 uppercase tracking-widest">Saldo Atual</span><div className="flex items-end gap-2 mt-4"><span className="text-4xl font-black text-white">{credits}</span><span className="text-xs text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded-full uppercase font-bold mb-1 border border-yellow-500/20">{plan}</span></div></div>
+                                    <div className="bg-gradient-to-br from-[#121214] to-[#1a1a1e] border border-gray-800 p-6 rounded-3xl flex flex-col justify-between cursor-pointer hover:border-purple-500/30 transition-all shadow-xl" onClick={() => setIsReferralOpen(true)}><span className="text-sm font-bold text-gray-400 uppercase tracking-widest">Nível de Prêmios</span><div className="w-full bg-gray-800 h-3 rounded-full mt-4 overflow-hidden relative"><div className="bg-gradient-to-r from-purple-500 to-pink-500 h-full relative" style={{ width: `${Math.min((coins / 250) * 100, 100)}%` }}></div></div><span className="text-xs text-right text-gray-500 mt-2 font-mono">{coins}/250 Moedas</span></div>
                                 </div>
-
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <div onClick={() => setMode('chat')} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-purple-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg">
-                                        <div className="bg-purple-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-purple-400"><MessageSquare className="w-7 h-7" /></div>
-                                        <h3 className="font-bold text-xl text-white">Chat & Nah</h3>
-                                        <p className="text-sm text-gray-400 mt-2 leading-relaxed">Converse, crie roteiros e tenha ideias com nossa IA.</p>
-                                    </div>
-                                    <div onClick={() => { setMode('image'); setImageFiles([]); }} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-blue-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg">
-                                        <div className="bg-blue-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-blue-400"><ImageIcon className="w-7 h-7" /></div>
-                                        <h3 className="font-bold text-xl text-white">Gerar Imagens</h3>
-                                        <p className="text-sm text-gray-400 mt-2 leading-relaxed">Crie ou edite imagens incríveis com o Nano Banana.</p>
-                                    </div>
-                                    <div onClick={() => { setMode('video'); setImageFiles([]); setAspectRatio("16:9"); }} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-orange-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg">
-                                        <div className="bg-orange-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-orange-400"><VideoIcon className="w-7 h-7" /></div>
-                                        <h3 className="font-bold text-xl text-white">Criar Vídeos</h3>
-                                        <p className="text-sm text-gray-400 mt-2 leading-relaxed">Transforme textos e imagens em vídeos cinematográficos.</p>
-                                    </div>
-                                    <div onClick={() => setMode('tryon')} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-pink-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg">
-                                        <div className="bg-pink-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-pink-400"><Shirt className="w-7 h-7" /></div>
-                                        <h3 className="font-bold text-xl text-white">Provador</h3>
-                                        <p className="text-sm text-gray-400 mt-2 leading-relaxed">Vista roupas em fotos de forma realista (Beta).</p>
-                                    </div>
+                                    <div onClick={() => setMode('chat')} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-purple-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg"><div className="bg-purple-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-purple-400"><MessageSquare className="w-7 h-7" /></div><h3 className="font-bold text-xl text-white">Chat & Nah</h3><p className="text-sm text-gray-400 mt-2 leading-relaxed">Converse e crie roteiros.</p></div>
+                                    <div onClick={() => { setMode('image'); setImageFiles([]); }} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-blue-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg"><div className="bg-blue-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-blue-400"><ImageIcon className="w-7 h-7" /></div><h3 className="font-bold text-xl text-white">Gerar Imagens</h3><p className="text-sm text-gray-400 mt-2 leading-relaxed">Crie artes com Nano Banana.</p></div>
+                                    <div onClick={() => { setMode('video'); setImageFiles([]); setAspectRatio("16:9"); }} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-orange-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg"><div className="bg-orange-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-orange-400"><VideoIcon className="w-7 h-7" /></div><h3 className="font-bold text-xl text-white">Criar Vídeos</h3><p className="text-sm text-gray-400 mt-2 leading-relaxed">Vídeos cinematográficos.</p></div>
+                                    <div onClick={() => setMode('tryon')} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-pink-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg"><div className="bg-pink-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-pink-400"><Shirt className="w-7 h-7" /></div><h3 className="font-bold text-xl text-white">Provador</h3><p className="text-sm text-gray-400 mt-2 leading-relaxed">Vista roupas em fotos.</p></div>
                                 </div>
-
-                                <div className="text-center pt-6">
-                                    <button onClick={() => setMode('gallery')} className="text-sm text-gray-500 hover:text-white flex items-center justify-center gap-2 mx-auto transition-colors"><Clock className="w-4 h-4" /> Ver meu histórico recente</button>
-                                </div>
+                                <div className="text-center pt-6"><button onClick={() => setMode('gallery')} className="text-sm text-gray-500 hover:text-white flex items-center justify-center gap-2 mx-auto transition-colors"><Clock className="w-4 h-4" /> Ver meu histórico recente</button></div>
                             </div>
                         )}
 
-                        {/* MENU TOPO (MOBILE) */}
                         {mode !== 'home' && (
                             <div className="md:hidden flex w-full bg-gray-900 p-1.5 rounded-2xl border border-gray-800 overflow-x-auto shrink-0 mb-4 sticky top-0 z-20 shadow-xl">
                                 <button onClick={() => setMode("chat")} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "chat" ? "bg-purple-900/50 text-purple-200" : "text-gray-500"}`}>Chat</button>
@@ -456,58 +334,6 @@ export default function Home() {
                             </div>
                         )}
 
-                        {mode === "tryon" && (
-                            <div className="flex flex-col md:flex-row gap-6 w-full h-full max-w-7xl mx-auto items-start">
-                                <div className={`flex-1 flex flex-col gap-4 w-full ${resultUrl ? 'md:w-1/3' : 'md:max-w-xl md:mx-auto'}`}>
-                                    <div className="bg-[#0f0f10] border border-pink-500/30 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
-                                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 opacity-30"></div>
-                                        <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-6"><Shirt className="w-5 h-5 text-pink-500" /> Provador Virtual</h3>
-
-                                        <div className="space-y-6">
-                                            <div className="space-y-2">
-                                                <label className="text-xs text-gray-400 font-bold uppercase flex justify-between">1. Foto da Pessoa <span>(Corpo Inteiro)</span></label>
-                                                <div className="relative group cursor-pointer" onClick={() => document.getElementById('input-person')?.click()}>
-                                                    <div className={`h-40 w-full rounded-xl border-2 border-dashed ${personFile ? 'border-pink-500' : 'border-gray-700'} flex items-center justify-center bg-[#121214] overflow-hidden hover:bg-[#1a1a1e] transition-colors`}>
-                                                        {personFile ? <img src={URL.createObjectURL(personFile)} className="w-full h-full object-cover" alt="pessoa" /> : <div className="text-center text-gray-500"><User className="w-8 h-8 mx-auto mb-2" /><span className="text-xs">Toque para enviar</span></div>}
-                                                    </div>
-                                                    <input id="input-person" type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && setPersonFile(e.target.files[0])} />
-                                                </div>
-                                            </div>
-
-                                            <div className="space-y-2">
-                                                <label className="text-xs text-gray-400 font-bold uppercase flex justify-between">2. Foto da Roupa <span>(Fundo Liso)</span></label>
-                                                <div className="relative group cursor-pointer" onClick={() => document.getElementById('input-garment')?.click()}>
-                                                    <div className={`h-40 w-full rounded-xl border-2 border-dashed ${garmentFile ? 'border-pink-500' : 'border-gray-700'} flex items-center justify-center bg-[#121214] overflow-hidden hover:bg-[#1a1a1e] transition-colors`}>
-                                                        {garmentFile ? <img src={URL.createObjectURL(garmentFile)} className="w-full h-full object-cover" alt="roupa" /> : <div className="text-center text-gray-500"><Shirt className="w-8 h-8 mx-auto mb-2" /><span className="text-xs">Toque para enviar</span></div>}
-                                                    </div>
-                                                    <input id="input-garment" type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && setGarmentFile(e.target.files[0])} />
-                                                </div>
-                                            </div>
-
-                                            <button onClick={handleTryOn} disabled={loading || !personFile || !garmentFile} className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg ${loading || !personFile || !garmentFile ? "bg-gray-800 text-gray-500" : "bg-gradient-to-r from-pink-600 to-purple-600 text-white hover:scale-[1.02] transition-transform"}`}>
-                                                {loading ? "Provando..." : `Vestir Agora (-80 Créditos)`}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {resultUrl && !loading && (
-                                    <div className="flex-1 w-full md:w-2/3 bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl animate-in fade-in slide-in-from-right-4 h-fit sticky top-4">
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h3 className="text-gray-400 flex items-center gap-2 font-medium"><Sparkles className="w-4 h-4 text-pink-500" /> Resultado</h3>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => handleShare(resultUrl, 'image')} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white"><Share2 className="w-4 h-4" /></button>
-                                                <button onClick={() => handleDownload(resultUrl, 'image')} className="p-2 bg-white text-black hover:bg-gray-200 rounded-lg"><Download className="w-4 h-4" /></button>
-                                            </div>
-                                        </div>
-                                        <div className="rounded-xl overflow-hidden border border-gray-800 bg-black/50 flex items-center justify-center">
-                                            <img src={resultUrl} className="max-w-full max-h-[70vh] object-contain shadow-2xl" alt="resultado" />
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
                         {(mode === "image" || mode === "video") && (
                             <div className="flex flex-col md:flex-row gap-6 w-full h-full max-w-7xl mx-auto items-start">
                                 <div className={`flex-1 flex flex-col gap-4 w-full ${resultUrl ? 'md:w-1/3' : 'md:max-w-2xl md:mx-auto'}`}>
@@ -555,7 +381,6 @@ export default function Home() {
                                     </div>
                                 </div>
 
-                                {/* COLUNA DIREITA: RESULTADO (Fixo) */}
                                 {resultUrl && !loading && (
                                     <div className="flex-1 w-full md:w-2/3 bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl animate-in fade-in slide-in-from-right-4 h-fit sticky top-4">
                                         <div className="flex justify-between items-center mb-4">
@@ -567,6 +392,55 @@ export default function Home() {
                                         </div>
                                         <div className="rounded-xl overflow-hidden border border-gray-800 bg-black/50 flex items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
                                             {mode === "image" ? <img src={resultUrl} className="max-w-full max-h-[70vh] object-contain shadow-2xl" alt="result" /> : <video src={resultUrl} controls autoPlay loop className="max-w-full max-h-[70vh] shadow-2xl" />}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {mode === "tryon" && (
+                            <div className="flex flex-col md:flex-row gap-6 w-full h-full max-w-7xl mx-auto items-start">
+                                <div className={`flex-1 flex flex-col gap-4 w-full ${resultUrl ? 'md:w-1/3' : 'md:max-w-xl md:mx-auto'}`}>
+                                    <div className="bg-[#0f0f10] border border-pink-500/30 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+                                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 opacity-30"></div>
+                                        <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-6"><Shirt className="w-5 h-5 text-pink-500" /> Provador Virtual</h3>
+                                        <div className="space-y-6">
+                                            <div className="space-y-2">
+                                                <label className="text-xs text-gray-400 font-bold uppercase flex justify-between">1. Foto da Pessoa <span>(Corpo Inteiro)</span></label>
+                                                <div className="relative group cursor-pointer" onClick={() => document.getElementById('input-person')?.click()}>
+                                                    <div className={`h-40 w-full rounded-xl border-2 border-dashed ${personFile ? 'border-pink-500' : 'border-gray-700'} flex items-center justify-center bg-[#121214] overflow-hidden hover:bg-[#1a1a1e] transition-colors`}>
+                                                        {personFile ? <img src={URL.createObjectURL(personFile)} className="w-full h-full object-cover" alt="pessoa" /> : <div className="text-center text-gray-500"><Upload className="w-8 h-8 mx-auto mb-2" /><span className="text-xs">Toque para enviar</span></div>}
+                                                    </div>
+                                                    <input id="input-person" type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && setPersonFile(e.target.files[0])} />
+                                                </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-xs text-gray-400 font-bold uppercase flex justify-between">2. Foto da Roupa <span>(Fundo Liso)</span></label>
+                                                <div className="relative group cursor-pointer" onClick={() => document.getElementById('input-garment')?.click()}>
+                                                    <div className={`h-40 w-full rounded-xl border-2 border-dashed ${garmentFile ? 'border-pink-500' : 'border-gray-700'} flex items-center justify-center bg-[#121214] overflow-hidden hover:bg-[#1a1a1e] transition-colors`}>
+                                                        {garmentFile ? <img src={URL.createObjectURL(garmentFile)} className="w-full h-full object-cover" alt="roupa" /> : <div className="text-center text-gray-500"><Shirt className="w-8 h-8 mx-auto mb-2" /><span className="text-xs">Toque para enviar</span></div>}
+                                                    </div>
+                                                    <input id="input-garment" type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && setGarmentFile(e.target.files[0])} />
+                                                </div>
+                                            </div>
+                                            <button onClick={handleTryOn} disabled={loading || !personFile || !garmentFile} className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg ${loading || !personFile || !garmentFile ? "bg-gray-800 text-gray-500" : "bg-gradient-to-r from-pink-600 to-purple-600 text-white hover:scale-[1.02] transition-transform"}`}>
+                                                {loading ? "Provando..." : `Vestir Agora (-10 Créditos)`}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {resultUrl && !loading && (
+                                    <div className="flex-1 w-full md:w-2/3 bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl animate-in fade-in slide-in-from-right-4 h-fit sticky top-4">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-gray-400 flex items-center gap-2 font-medium"><Sparkles className="w-4 h-4 text-pink-500" /> Resultado</h3>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => handleShare(resultUrl, 'image')} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white"><Share2 className="w-4 h-4" /></button>
+                                                <button onClick={() => handleDownload(resultUrl, 'image')} className="p-2 bg-white text-black hover:bg-gray-200 rounded-lg"><Download className="w-4 h-4" /></button>
+                                            </div>
+                                        </div>
+                                        <div className="rounded-xl overflow-hidden border border-gray-800 bg-black/50 flex items-center justify-center">
+                                            <img src={resultUrl} className="max-w-full max-h-[70vh] object-contain shadow-2xl" alt="resultado" />
                                         </div>
                                     </div>
                                 )}
@@ -592,7 +466,6 @@ export default function Home() {
                 </div>
             </div>
 
-            {/* FOOTER COMPACTO (Slim) */}
             <footer className="h-[30px] bg-[#0a0a0a] border-t border-gray-900 flex justify-center items-center gap-4 text-[10px] text-gray-600 shrink-0 z-30">
                 <span>© 2025 NastIA Studio</span>
                 <span className="w-1 h-1 bg-gray-800 rounded-full"></span>
