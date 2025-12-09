@@ -7,8 +7,7 @@ import {
     XCircle, LogOut, Coins, Gift,
     Share2, Download, Instagram, Globe, MessageCircle, Plus,
     ArrowRightCircle, Layers, Clock, CheckCircle, Bell, ExternalLink, ChevronDown,
-    X, Send, Bot, PlayCircle, Eye, Upload,
-    MessageSquare
+    X, MessageSquare, Send, Bot, PlayCircle, Eye, Upload
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { supabase } from "../lib/supabase";
@@ -17,13 +16,11 @@ import StoreModal from "../components/StoreModal";
 import AdPlayer from "../components/AdPlayer";
 import GamifiedReferral from "../components/GamifiedReferral";
 import SupportWidget from "../components/SupportWidget";
+// ApiKeyModal removido pois o modo Turbo foi cancelado e gerava erro de variável não usada
 
-// Carregamento dinâmico
-const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
-    ssr: false,
-    loading: () => <div className="text-white text-center p-10">Carregando...</div>
-});
+const ImageEditor = dynamic(() => import("../components/ImageEditor"), { ssr: false, loading: () => <div className="text-white text-center p-10">Carregando Editor...</div> });
 
+// SEUS LINKS DO SUPABASE
 const SHORT_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 const LONG_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 
@@ -41,6 +38,7 @@ const PERSONAS = [
 ];
 
 export default function Home() {
+    // Estados Globais
     const [session, setSession] = useState<any>(null);
     const [credits, setCredits] = useState<number>(0);
     const [coins, setCoins] = useState<number>(0);
@@ -48,32 +46,39 @@ export default function Home() {
     const [referralCode, setReferralCode] = useState<string>("");
     const [authLoading, setAuthLoading] = useState(true);
 
+    // Navegação
     const [mode, setMode] = useState<"home" | "image" | "video" | "gallery" | "chat" | "tryon">("home");
+
+    // Estados de Criação
     const [prompt, setPrompt] = useState("");
     const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [isMobile, setIsMobile] = useState(false);
     const [aspectRatio, setAspectRatio] = useState<string>("16:9");
 
+    // Estados Try-On
     const [personFile, setPersonFile] = useState<File | null>(null);
     const [garmentFile, setGarmentFile] = useState<File | null>(null);
 
+    // Estados de Resultado e Anúncio
     const [resultUrl, setResultUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [currentAdUrl, setCurrentAdUrl] = useState("");
     const [pendingResult, setPendingResult] = useState<string | null>(null);
-    const [adProgress, setAdProgress] = useState(0);
     const [adFinished, setAdFinished] = useState(false);
+    const [adProgress, setAdProgress] = useState(0);
 
     const [history, setHistory] = useState<any[]>([]);
     const [notifications, setNotifications] = useState<any[]>([]);
     const [showNotifications, setShowNotifications] = useState(false);
 
+    // Modais
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isStoreOpen, setIsStoreOpen] = useState(false);
     const [isReferralOpen, setIsReferralOpen] = useState(false);
-
+    // isApiKeyOpen removido para limpar código
     const [selectedMedia, setSelectedMedia] = useState<any>(null);
 
+    // Chat
     const [chatHistory, setChatHistory] = useState<{ role: string, parts: string }[]>([]);
     const [chatInput, setChatInput] = useState("");
     const [chatLoading, setChatLoading] = useState(false);
@@ -81,7 +86,7 @@ export default function Home() {
     const chatEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Efeito para liberar resultado após anúncio
+    // --- EFEITO VIGILANTE (Monitora Anúncio) ---
     useEffect(() => {
         if (adFinished && pendingResult) {
             setResultUrl(pendingResult);
@@ -133,11 +138,19 @@ export default function Home() {
     const removeImage = (index: number) => { setImageFiles(prev => prev.filter((_, i) => i !== index)); };
     const handleClearAll = () => { setResultUrl(null); setImageFiles([]); setPrompt(""); };
 
+    // --- FUNÇÃO DE TRANSFORMAR EM VÍDEO (Com Trava de Plano) ---
     const handleTransformToVideo = async (targetUrl: string | null) => {
         const urlToUse = targetUrl || resultUrl || selectedMedia?.url;
         if (!urlToUse) return;
+
+        // TRAVA DE PLANO
+        if (!["plus", "pro", "agency", "criação"].includes(plan)) {
+            alert("A criação de vídeo é exclusiva para planos Plus e Pro.");
+            setIsStoreOpen(true);
+            return;
+        }
+
         try {
-            if (!["plus", "pro", "agency", "criação"].includes(plan)) { alert("A criação de vídeo é exclusiva para planos Plus e Pro."); setIsStoreOpen(true); return; }
             const res = await fetch(urlToUse); const blob = await res.blob(); const file = new File([blob], "base.jpg", { type: "image/jpeg" });
             setMode("video"); setImageFiles([file]); setResultUrl(null); setPrompt(""); setSelectedMedia(null);
         } catch (e) { }
@@ -160,9 +173,18 @@ export default function Home() {
         if (mode === "video") cost = 50;
 
         if (credits < cost) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
-        if (mode === "video" && !["plus", "pro", "agency", "criação"].includes(plan)) { alert("Vídeos são exclusivos para assinantes Plus e Pro."); setIsStoreOpen(true); return; }
 
-        prepareAd(); setLoading(true); setResultUrl(null); setPendingResult(null);
+        // TRAVA DE PLANO PARA MODO VÍDEO
+        if (mode === "video" && !["plus", "pro", "agency", "criação"].includes(plan)) {
+            alert("Vídeos são exclusivos para assinantes Plus e Pro.");
+            setIsStoreOpen(true);
+            return;
+        }
+
+        prepareAd();
+        setLoading(true);
+        setResultUrl(null);
+        setPendingResult(null);
 
         const previousResult = resultUrl;
         const formData = new FormData(); formData.append("user_id", session.user.id); formData.append("aspect_ratio", aspectRatio);
@@ -178,8 +200,11 @@ export default function Home() {
             const endpoint = mode === "image" ? `${process.env.NEXT_PUBLIC_API_URL}/generate-image` : `${process.env.NEXT_PUBLIC_API_URL}/generate-video`;
             const res = await axios.post(endpoint, formData, { headers: { "Content-Type": "multipart/form-data" } });
 
-            fetchProfile(session.user.id); fetchHistory(session.user.id);
-            setPendingResult(res.data.image || res.data.video);
+            fetchProfile(session.user.id);
+            fetchHistory(session.user.id);
+
+            const url = res.data.image || res.data.video;
+            setPendingResult(url); // Vai para o useEffect aguardar o anúncio
 
         } catch (error: any) {
             alert(error.response?.data?.detail || "Erro.");
@@ -188,11 +213,17 @@ export default function Home() {
         }
     };
 
+    // --- TRY ON CORRIGIDO (Com Anúncio e Preço 10) ---
     const handleTryOn = async () => {
         if (!personFile || !garmentFile) return alert("Selecione as duas fotos.");
-        if (credits < 10) { alert("Saldo insuficiente."); setIsStoreOpen(true); return; }
 
-        prepareAd(); setLoading(true); setResultUrl(null); setPendingResult(null);
+        // Verifica 10 créditos
+        if (credits < 10) { alert("Saldo insuficiente (10 créditos)."); setIsStoreOpen(true); return; }
+
+        prepareAd(); // Inicia Anúncio
+        setLoading(true);
+        setResultUrl(null);
+        setPendingResult(null);
 
         const formData = new FormData();
         formData.append("user_id", session.user.id);
@@ -202,7 +233,7 @@ export default function Home() {
         try {
             const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/generate-tryon`, formData, { headers: { "Content-Type": "multipart/form-data" } });
             fetchProfile(session.user.id);
-            setPendingResult(res.data.image);
+            setPendingResult(res.data.image); // Aguarda Anúncio
         } catch (error: any) {
             alert(error.response?.data?.detail || "Erro.");
             setLoading(false);
@@ -216,11 +247,7 @@ export default function Home() {
         setChatInput("");
         setChatLoading(true);
         try {
-            const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/chat`, {
-                user_id: session.user.id,
-                history: chatHistory.concat(userMsg),
-                persona: currentPersona.prompt
-            });
+            const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/chat`, { user_id: session.user.id, history: chatHistory.concat(userMsg), persona: currentPersona.prompt });
             setChatHistory(prev => [...prev, { role: "model", parts: res.data.response }]);
         } catch (e) { setChatHistory(prev => [...prev, { role: "model", parts: "Erro de conexão." }]); } finally { setChatLoading(false); }
     };
@@ -244,8 +271,6 @@ export default function Home() {
 
     return (
         <main className="h-screen bg-[#050505] text-white flex flex-col font-sans overflow-hidden">
-
-            {/* HEADER */}
             <header className="h-16 shrink-0 border-b border-gray-800 bg-black/50 backdrop-blur-md flex justify-between items-center px-4 z-30">
                 <div className="flex items-center gap-3 cursor-pointer" onClick={() => setMode('home')}>
                     <img src="/app-logo.png" alt="NastIA" className="h-8 w-auto" />
@@ -273,7 +298,6 @@ export default function Home() {
             {isReferralOpen && referralCode && <GamifiedReferral userId={session.user.id} referralCode={referralCode} onClose={() => setIsReferralOpen(false)} />}
             <SupportWidget userId={session.user.id} userName={session.user.user_metadata.full_name} />
 
-            {/* Modal de Mídia Mobile */}
             {selectedMedia && (
                 <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setSelectedMedia(null)}>
                     <div className="bg-[#18181b] w-full max-w-sm rounded-2xl border border-gray-700 p-4 space-y-4" onClick={(e) => e.stopPropagation()}>
@@ -299,8 +323,6 @@ export default function Home() {
             )}
 
             <div className="flex-1 w-full flex flex-col overflow-hidden relative">
-
-                {/* MENU LATERAL */}
                 {mode !== 'home' && (
                     <div className="hidden md:flex flex-col gap-2 w-20 bg-[#0f0f10] border-r border-gray-800 items-center py-4 shrink-0 absolute left-0 top-0 bottom-0 z-20">
                         <button onClick={() => setMode("chat")} className={`p-3 rounded-xl transition-all ${mode === "chat" ? "bg-purple-600 text-white" : "text-gray-500 hover:bg-gray-800"}`} title="Chat"><MessageSquare className="w-6 h-6" /></button>
@@ -313,7 +335,6 @@ export default function Home() {
 
                 <div className={`flex-1 overflow-y-auto w-full p-4 py-6 ${mode !== 'home' ? 'md:pl-24' : ''}`}>
                     <div className="w-full max-w-6xl mx-auto space-y-6">
-
                         {mode === 'home' && (
                             <div className="w-full animate-in fade-in slide-in-from-bottom-4 space-y-8 pb-10 max-w-4xl mx-auto">
                                 <div className="text-center py-8"><h2 className="text-4xl font-bold text-white mb-2 tracking-tight">Olá, <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">{session.user.user_metadata.full_name?.split(' ')[0]}</span> 👋</h2><p className="text-lg text-gray-400">Pronto para criar algo incrível?</p></div>
@@ -345,9 +366,21 @@ export default function Home() {
                             <div className="w-full flex flex-col md:flex-row gap-4 h-[65vh] md:h-[calc(100vh-140px)]">
                                 <div className="w-full md:w-1/3 bg-[#0f0f10] border border-gray-800 rounded-3xl p-4 overflow-y-auto hidden md:block">
                                     <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">Especialistas</h3>
-                                    <div className="space-y-2">{PERSONAS.map(p => <div key={p.id} onClick={() => { setCurrentPersona(p); setChatHistory([]); }} className={`p-4 rounded-2xl cursor-pointer border transition-all ${currentPersona.id === p.id ? "bg-purple-900/20 border-purple-500/50" : "bg-gray-900/30 border-transparent hover:bg-gray-800"}`}><div className="font-bold text-sm text-white">{p.name}</div><div className="text-[10px] text-gray-500 mt-1">{p.role}</div></div>)}</div>
+                                    <div className="space-y-2">
+                                        {PERSONAS.map(persona => (
+                                            <div key={persona.id} onClick={() => { setCurrentPersona(persona); setChatHistory([]); }} className={`p-4 rounded-2xl cursor-pointer border transition-all ${currentPersona.id === persona.id ? "bg-purple-900/20 border-purple-500/50" : "bg-gray-900/30 border-transparent hover:bg-gray-800"}`}>
+                                                <div className="font-bold text-sm text-white">{persona.name}</div>
+                                                <div className="text-[10px] text-gray-500 mt-1">{persona.role}</div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                                <div className="md:hidden w-full"><select onChange={(e) => { const p = PERSONAS.find(x => x.id === e.target.value); if (p) { setCurrentPersona(p); setChatHistory([]); } }} className="w-full bg-[#18181b] text-white p-3 rounded-xl border border-gray-700 outline-none">{PERSONAS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+                                <div className="md:hidden w-full">
+                                    <select onChange={(e) => { const p = PERSONAS.find(p => p.id === e.target.value); if (p) { setCurrentPersona(p); setChatHistory([]); } }} className="w-full bg-[#18181b] text-white p-3 rounded-xl border border-gray-700 outline-none">
+                                        {PERSONAS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                </div>
+
                                 <div className="flex-1 bg-[#0f0f10] border border-gray-800 rounded-3xl flex flex-col overflow-hidden relative shadow-inner">
                                     <div className="flex-1 overflow-y-auto p-4 space-y-4">{chatHistory.length === 0 && <div className="h-full flex flex-col items-center justify-center text-gray-600 text-center p-6"><Bot className="w-16 h-16 mb-4 text-purple-900/30" /><p className="text-lg font-bold text-gray-300">Olá! Sou a {currentPersona.name}.</p><p className="text-sm mt-2 max-w-xs">{currentPersona.prompt.split('.')[1]}</p></div>}{chatHistory.map((msg, i) => <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed shadow-md ${msg.role === "user" ? "bg-white text-black" : "bg-[#18181b] text-gray-200 border border-gray-800"}`}>{msg.parts}</div></div>)}{chatLoading && <div className="text-gray-500 text-xs animate-pulse ml-4">Digitando...</div>}<div ref={chatEndRef} /></div>
                                     <div className="p-4 border-t border-gray-800 bg-[#0a0a0a] flex gap-2"><input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleChatSend()} placeholder="Digite sua mensagem..." className="flex-1 bg-[#18181b] border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-purple-500 outline-none transition-all" /><button onClick={handleChatSend} disabled={chatLoading} className="bg-purple-600 hover:bg-purple-500 text-white p-3 rounded-xl transition-all shadow-lg"><Send className="w-5 h-5" /></button></div>
