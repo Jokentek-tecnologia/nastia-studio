@@ -7,7 +7,8 @@ import {
     XCircle, LogOut, Coins, Gift,
     Share2, Download, Instagram, Globe, MessageCircle, Plus,
     ArrowRightCircle, Layers, Clock, CheckCircle, Bell, ExternalLink, ChevronDown,
-    X, Send, Bot, PlayCircle, Eye, Upload
+    X, Send, Bot, PlayCircle, Eye, Upload,
+    MessageSquare
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { supabase } from "../lib/supabase";
