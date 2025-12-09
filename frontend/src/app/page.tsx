@@ -4,10 +4,10 @@ import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import {
     Sparkles, Image as ImageIcon, Video as VideoIcon, Shirt,
-    Film, XCircle, Edit, LogOut, Coins, Gift, Key,
+    XCircle, LogOut, Coins, Gift, Key,
     Share2, Download, Instagram, Globe, MessageCircle, Plus, Copy,
     ArrowRightCircle, Layers, Clock, CheckCircle, Bell, ExternalLink, ChevronDown,
-    X, MessageSquare, Send, Bot, Zap, PlayCircle, Eye, Headphones, Upload
+    X, MessageSquare, Send, Bot, Zap, PlayCircle, Eye, Upload
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { supabase } from "../lib/supabase";
@@ -15,12 +15,12 @@ import Login from "../components/Login";
 import StoreModal from "../components/StoreModal";
 import AdPlayer from "../components/AdPlayer";
 import GamifiedReferral from "../components/GamifiedReferral";
+import ApiKeyModal from "../components/ApiKeyModal";
 import SupportWidget from "../components/SupportWidget";
-import ApiKeyModal from "@/components/ApiKeyModal";
 
-const ImageEditor = dynamic(() => import("../components/ImageEditor"), { ssr: false, loading: () => <div className="text-white text-center p-10">Carregando Editor...</div> });
+// Carregamento dinâmico
+const ImageEditor = dynamic(() => import("../components/ImageEditor"), { ssr: false, loading: () => <div className="text-white text-center p-10">Carregando...</div> });
 
-// Substitua pelos seus links reais do Supabase
 const SHORT_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 const LONG_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 
@@ -38,7 +38,6 @@ const PERSONAS = [
 ];
 
 export default function Home() {
-    // Estados Globais
     const [session, setSession] = useState<any>(null);
     const [credits, setCredits] = useState<number>(0);
     const [coins, setCoins] = useState<number>(0);
@@ -46,32 +45,27 @@ export default function Home() {
     const [referralCode, setReferralCode] = useState<string>("");
     const [authLoading, setAuthLoading] = useState(true);
 
-    // Navegação
     const [mode, setMode] = useState<"home" | "image" | "video" | "gallery" | "chat" | "tryon">("home");
-
-    // Estados de Criação
     const [prompt, setPrompt] = useState("");
     const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [isMobile, setIsMobile] = useState(false);
     const [aspectRatio, setAspectRatio] = useState<string>("16:9");
 
-    // Estados Try-On
+    // Try-On
     const [personFile, setPersonFile] = useState<File | null>(null);
     const [garmentFile, setGarmentFile] = useState<File | null>(null);
 
-    // Estados de Resultado e Anúncio (CORREÇÃO AQUI)
     const [resultUrl, setResultUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [currentAdUrl, setCurrentAdUrl] = useState("");
     const [pendingResult, setPendingResult] = useState<string | null>(null);
-    const [adFinished, setAdFinished] = useState(false); // NOVO: Monitora se o vídeo acabou
     const [adProgress, setAdProgress] = useState(0);
+    const [adFinished, setAdFinished] = useState(false); // Monitora fim do anúncio
 
     const [history, setHistory] = useState<any[]>([]);
     const [notifications, setNotifications] = useState<any[]>([]);
     const [showNotifications, setShowNotifications] = useState(false);
 
-    // Modais
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isStoreOpen, setIsStoreOpen] = useState(false);
     const [isReferralOpen, setIsReferralOpen] = useState(false);
@@ -79,7 +73,6 @@ export default function Home() {
     const [hasCustomKey, setHasCustomKey] = useState(false);
     const [selectedMedia, setSelectedMedia] = useState<any>(null);
 
-    // Chat
     const [chatHistory, setChatHistory] = useState<{ role: string, parts: string }[]>([]);
     const [chatInput, setChatInput] = useState("");
     const [chatLoading, setChatLoading] = useState(false);
@@ -87,18 +80,15 @@ export default function Home() {
     const chatEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // --- EFEITO VIGILANTE (CORREÇÃO DE BUG DO ANÚNCIO) ---
-    // Este efeito roda sempre que o status do anúncio ou do resultado muda
+    // Efeito Vigilante (Anúncio + Resultado)
     useEffect(() => {
         if (adFinished && pendingResult) {
-            // Se o anúncio acabou E o resultado chegou: MOSTRA O RESULTADO
             setResultUrl(pendingResult);
             setLoading(false);
             setPendingResult(null);
             setAdFinished(false);
         }
     }, [adFinished, pendingResult]);
-    // -----------------------------------------------------
 
     useEffect(() => {
         const check = () => setIsMobile(window.innerWidth < 768);
@@ -108,13 +98,7 @@ export default function Home() {
 
     const fetchProfile = async (userId: string) => {
         const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (data) {
-            setCredits(data.credits);
-            setPlan(data.plan_tier);
-            setReferralCode(data.referral_code);
-            setCoins(data.coins || 0);
-            if (data.custom_api_key) setHasCustomKey(true);
-        }
+        if (data) { setCredits(data.credits); setPlan(data.plan_tier); setReferralCode(data.referral_code); setCoins(data.coins || 0); if (data.custom_api_key) setHasCustomKey(true); }
     };
 
     const fetchHistory = async (userId: string) => {
@@ -130,6 +114,7 @@ export default function Home() {
     const handleLoginSuccess = async (session: any) => { fetchProfile(session.user.id); fetchHistory(session.user.id); fetchNotifications(); };
     useEffect(() => { supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); if (session) handleLoginSuccess(session); setAuthLoading(false); }); const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => { setSession(session); if (session) handleLoginSuccess(session); else setAuthLoading(false); }); return () => subscription.unsubscribe(); }, []);
     useEffect(() => { if (mode === 'chat') chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory, mode]);
+
     const handleLogout = async () => await supabase.auth.signOut();
     const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files) { const newFiles = Array.from(e.target.files); if (mode === "video") setImageFiles([newFiles[0]]); else setImageFiles(prev => [...prev, ...newFiles].slice(0, 8)); } };
     const removeImage = (index: number) => { setImageFiles(prev => prev.filter((_, i) => i !== index)); };
@@ -146,14 +131,11 @@ export default function Home() {
     };
 
     const handleEditFromGallery = async (url: string) => { setResultUrl(url); setIsEditorOpen(true); setSelectedMedia(null); }
-    const handleMobileEditClick = () => { alert("Para editar, use o chat."); };
-
-    // Prepara Anúncio: Reseta estados
     const prepareAd = () => {
         const list = mode === "image" || mode === "tryon" ? SHORT_ADS : LONG_ADS;
         setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]);
         setAdProgress(0);
-        setAdFinished(false); // Reseta flag de término
+        setAdFinished(false);
     };
 
     const handleGenerate = async () => {
@@ -163,13 +145,10 @@ export default function Home() {
         if (mode === "image" && (imageFiles.length > 1 || isEditingContext)) cost = 10;
         if (mode === "video") cost = 50;
 
-        if (credits < cost) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
+        if (credits < cost && !hasCustomKey) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
         if (mode === "video" && !["plus", "pro", "agency", "criação"].includes(plan)) { alert("Vídeos são exclusivos para assinantes Plus e Pro."); setIsStoreOpen(true); return; }
 
-        prepareAd();
-        setLoading(true);
-        setResultUrl(null); // Limpa resultado anterior
-        setPendingResult(null);
+        prepareAd(); setLoading(true); setResultUrl(null); setPendingResult(null);
 
         const previousResult = resultUrl;
         const formData = new FormData(); formData.append("user_id", session.user.id); formData.append("aspect_ratio", aspectRatio);
@@ -185,12 +164,9 @@ export default function Home() {
             const endpoint = mode === "image" ? `${process.env.NEXT_PUBLIC_API_URL}/generate-image` : `${process.env.NEXT_PUBLIC_API_URL}/generate-video`;
             const res = await axios.post(endpoint, formData, { headers: { "Content-Type": "multipart/form-data" } });
 
-            fetchProfile(session.user.id);
-            fetchHistory(session.user.id);
-
-            // Define o resultado PENDENTE (o useEffect lá em cima vai liberar quando o anúncio acabar)
+            fetchProfile(session.user.id); fetchHistory(session.user.id);
             const url = res.data.image || res.data.video;
-            setPendingResult(url);
+            setPendingResult(url); // Aguarda Anúncio
 
         } catch (error: any) {
             alert(error.response?.data?.detail || "Erro.");
@@ -203,10 +179,7 @@ export default function Home() {
         if (!personFile || !garmentFile) return alert("Selecione as duas fotos.");
         if (credits < 10) { alert("Saldo insuficiente."); setIsStoreOpen(true); return; }
 
-        prepareAd();
-        setLoading(true);
-        setResultUrl(null);
-        setPendingResult(null);
+        prepareAd(); setLoading(true); setResultUrl(null); setPendingResult(null);
 
         const formData = new FormData();
         formData.append("user_id", session.user.id);
@@ -216,11 +189,8 @@ export default function Home() {
         try {
             const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/generate-tryon`, formData, { headers: { "Content-Type": "multipart/form-data" } });
             fetchProfile(session.user.id);
-            setPendingResult(res.data.image); // Define pendente para o useEffect pegar
-        } catch (error: any) {
-            alert(error.response?.data?.detail || "Erro.");
-            setLoading(false);
-        }
+            setPendingResult(res.data.image);
+        } catch (error: any) { alert(error.response?.data?.detail || "Erro."); setLoading(false); }
     };
 
     const handleChatSend = async () => {
@@ -235,15 +205,8 @@ export default function Home() {
         } catch (e) { setChatHistory(prev => [...prev, { role: "model", parts: "Erro de conexão." }]); } finally { setChatLoading(false); }
     };
 
-    // Handler quando o vídeo acaba
-    const handleAdEnded = () => {
-        setAdFinished(true); // Marca que o anúncio acabou. O useEffect faz o resto.
-    };
-
-    // Handler para pular (Força o término)
-    const handleSkipAd = () => {
-        setAdFinished(true);
-    };
+    const handleAdEnded = () => { setAdFinished(true); };
+    const handleSkipAd = () => { setAdFinished(true); };
 
     const copyReferral = () => { navigator.clipboard.writeText(`https://nastia-studio.netlify.app?ref=${referralCode}`); alert("Link Copiado!"); }
     const handleDownload = (url: string, type: string) => { const link = document.createElement("a"); link.href = url; link.download = `NastIA.${type === 'image' ? 'jpg' : 'mp4'}`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
@@ -282,7 +245,7 @@ export default function Home() {
                             </div>
                         )}
                     </div>
-                    <img src={session.user.user_metadata.avatar_url} className="w-8 h-8 rounded-full border border-gray-700 ml-1" />
+                    <img src={session.user.user_metadata.avatar_url} alt="User" className="w-8 h-8 rounded-full border border-gray-700 ml-1" />
                 </div>
             </header>
 
@@ -296,7 +259,7 @@ export default function Home() {
                 <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setSelectedMedia(null)}>
                     <div className="bg-[#18181b] w-full max-w-sm rounded-2xl border border-gray-700 p-4 space-y-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-between items-center border-b border-gray-800 pb-2"><h3 className="font-bold text-white">Visualizar</h3><button onClick={() => setSelectedMedia(null)}><X className="w-5 h-5 text-gray-400" /></button></div>
-                        <div className="rounded-xl overflow-hidden bg-black aspect-square flex items-center justify-center">{selectedMedia.type === 'image' ? <img src={selectedMedia.url} className="w-full h-full object-contain" /> : <video src={selectedMedia.url} controls className="w-full h-full" />}</div>
+                        <div className="rounded-xl overflow-hidden bg-black aspect-square flex items-center justify-center">{selectedMedia.type === 'image' ? <img src={selectedMedia.url} alt="media" className="w-full h-full object-contain" /> : <video src={selectedMedia.url} controls className="w-full h-full" />}</div>
                         <div className="grid grid-cols-2 gap-2"><button onClick={() => handleDownload(selectedMedia.url, selectedMedia.type)} className="bg-white text-black py-3 rounded-xl font-bold flex items-center justify-center gap-2"><Download className="w-4 h-4" /> Baixar</button><button onClick={() => handleShare(selectedMedia.url, selectedMedia.type)} className="bg-gray-800 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"><Share2 className="w-4 h-4" /> Enviar</button>{selectedMedia.type === 'image' && <button onClick={() => handleTransformToVideo(null)} className="bg-blue-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 col-span-2"><PlayCircle className="w-4 h-4" /> Criar Vídeo</button>}</div>
                     </div>
                 </div>
@@ -306,18 +269,12 @@ export default function Home() {
                 <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center">
                     <div className="animate-pulse text-yellow-500 mb-4"><Sparkles className="w-8 h-8 mx-auto" /></div>
                     <div className="w-full h-full absolute inset-0"><AdPlayer src={currentAdUrl} onEnded={handleAdEnded} /></div>
-
-                    {/* Botão de Pular ou Mensagem de Espera */}
+                    {/* BOTÃO PULAR / MENSAGEM */}
                     {pendingResult ? (
-                        <button onClick={handleSkipAd} className="absolute bottom-10 bg-green-500 text-black px-6 py-3 rounded-full font-bold shadow-lg animate-bounce flex items-center gap-2">
-                            <CheckCircle className="w-5 h-5" /> SEU RESULTADO ESTÁ PRONTO!
-                        </button>
+                        <button onClick={handleSkipAd} className="absolute bottom-10 bg-green-500 text-black px-6 py-3 rounded-full font-bold shadow-lg animate-bounce flex items-center gap-2"><CheckCircle className="w-5 h-5" /> SEU RESULTADO ESTÁ PRONTO!</button>
                     ) : (
-                        <div className="absolute bottom-10 bg-black/50 text-white/70 px-4 py-2 rounded-full text-xs backdrop-blur-md">
-                            Criando sua arte... {Math.round(adProgress)}%
-                        </div>
+                        <div className="absolute bottom-10 bg-black/50 text-white/70 px-4 py-2 rounded-full text-xs backdrop-blur-md">Criando sua arte... {Math.round(adProgress)}%</div>
                     )}
-
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} /></div>
                 </div>
             )}
@@ -348,6 +305,15 @@ export default function Home() {
                                     <div onClick={() => { setMode('video'); setImageFiles([]); setAspectRatio("16:9"); }} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-orange-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg"><div className="bg-orange-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-orange-400"><VideoIcon className="w-7 h-7" /></div><h3 className="font-bold text-xl text-white">Criar Vídeos</h3><p className="text-sm text-gray-400 mt-2 leading-relaxed">Vídeos cinematográficos.</p></div>
                                     <div onClick={() => setMode('tryon')} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-pink-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg"><div className="bg-pink-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-pink-400"><Shirt className="w-7 h-7" /></div><h3 className="font-bold text-xl text-white">Provador</h3><p className="text-sm text-gray-400 mt-2 leading-relaxed">Vista roupas em fotos.</p></div>
                                 </div>
+
+                                {!hasCustomKey && (
+                                    <div onClick={() => setIsApiKeyOpen(true)} className="bg-gradient-to-r from-green-900/20 to-emerald-900/20 border border-green-500/30 p-5 rounded-3xl flex items-center gap-5 cursor-pointer hover:scale-[1.01] transition-transform shadow-lg">
+                                        <div className="bg-green-500/20 p-4 rounded-full text-green-400 animate-pulse"><Zap className="w-6 h-6" /></div>
+                                        <div><h4 className="font-bold text-lg text-green-100">Ativar Modo Turbo Grátis</h4><p className="text-sm text-green-300/70">Use sua conta do Google para gerar sem gastar créditos da plataforma.</p></div>
+                                        <ArrowRightCircle className="w-6 h-6 text-green-500 ml-auto" />
+                                    </div>
+                                )}
+
                                 <div className="text-center pt-6"><button onClick={() => setMode('gallery')} className="text-sm text-gray-500 hover:text-white flex items-center justify-center gap-2 mx-auto transition-colors"><Clock className="w-4 h-4" /> Ver meu histórico recente</button></div>
                             </div>
                         )}
@@ -366,42 +332,12 @@ export default function Home() {
                             <div className="w-full flex flex-col md:flex-row gap-4 h-[65vh] md:h-[calc(100vh-140px)]">
                                 <div className="w-full md:w-1/3 bg-[#0f0f10] border border-gray-800 rounded-3xl p-4 overflow-y-auto hidden md:block">
                                     <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">Especialistas</h3>
-                                    <div className="space-y-2">
-                                        {PERSONAS.map(persona => (
-                                            <div key={persona.id} onClick={() => { setCurrentPersona(persona); setChatHistory([]); }} className={`p-4 rounded-2xl cursor-pointer border transition-all ${currentPersona.id === persona.id ? "bg-purple-900/20 border-purple-500/50" : "bg-gray-900/30 border-transparent hover:bg-gray-800"}`}>
-                                                <div className="font-bold text-sm text-white">{persona.name}</div>
-                                                <div className="text-[10px] text-gray-500 mt-1">{persona.role}</div>
-                                            </div>
-                                        ))}
-                                    </div>
+                                    <div className="space-y-2">{PERSONAS.map(p => <div key={p.id} onClick={() => { setCurrentPersona(p); setChatHistory([]); }} className={`p-4 rounded-2xl cursor-pointer border transition-all ${currentPersona.id === p.id ? "bg-purple-900/20 border-purple-500/50" : "bg-gray-900/30 border-transparent hover:bg-gray-800"}`}><div className="font-bold text-sm text-white">{p.name}</div><div className="text-[10px] text-gray-500 mt-1">{p.role}</div></div>)}</div>
                                 </div>
-                                <div className="md:hidden w-full">
-                                    <select onChange={(e) => { const p = PERSONAS.find(p => p.id === e.target.value); if (p) { setCurrentPersona(p); setChatHistory([]); } }} className="w-full bg-[#18181b] text-white p-3 rounded-xl border border-gray-700 outline-none">
-                                        {PERSONAS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                    </select>
-                                </div>
-
+                                <div className="md:hidden w-full"><select onChange={(e) => { const p = PERSONAS.find(x => x.id === e.target.value); if (p) { setCurrentPersona(p); setChatHistory([]); } }} className="w-full bg-[#18181b] text-white p-3 rounded-xl border border-gray-700 outline-none">{PERSONAS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
                                 <div className="flex-1 bg-[#0f0f10] border border-gray-800 rounded-3xl flex flex-col overflow-hidden relative shadow-inner">
-                                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                                        {chatHistory.length === 0 && (
-                                            <div className="h-full flex flex-col items-center justify-center text-gray-600 text-center p-6">
-                                                <Bot className="w-16 h-16 mb-4 text-purple-900/30" />
-                                                <p className="text-lg font-bold text-gray-300">Olá! Sou a {currentPersona.name}.</p>
-                                                <p className="text-sm mt-2 max-w-xs">{currentPersona.prompt.split('.')[1]}</p>
-                                            </div>
-                                        )}
-                                        {chatHistory.map((msg, i) => (
-                                            <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                                                <div className={`max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed shadow-md ${msg.role === "user" ? "bg-white text-black" : "bg-[#18181b] text-gray-200 border border-gray-800"}`}>{msg.parts}</div>
-                                            </div>
-                                        ))}
-                                        {chatLoading && <div className="text-gray-500 text-xs animate-pulse ml-4">Digitando...</div>}
-                                        <div ref={chatEndRef} />
-                                    </div>
-                                    <div className="p-4 border-t border-gray-800 bg-[#0a0a0a] flex gap-2">
-                                        <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleChatSend()} placeholder="Digite sua mensagem..." className="flex-1 bg-[#18181b] border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-purple-500 outline-none transition-all" />
-                                        <button onClick={handleChatSend} disabled={chatLoading} className="bg-purple-600 hover:bg-purple-500 text-white p-3 rounded-xl transition-all shadow-lg"><Send className="w-5 h-5" /></button>
-                                    </div>
+                                    <div className="flex-1 overflow-y-auto p-4 space-y-4">{chatHistory.length === 0 && <div className="h-full flex flex-col items-center justify-center text-gray-600 text-center p-6"><Bot className="w-16 h-16 mb-4 text-purple-900/30" /><p className="text-lg font-bold text-gray-300">Olá! Sou a {currentPersona.name}.</p><p className="text-sm mt-2 max-w-xs">{currentPersona.prompt.split('.')[1]}</p></div>}{chatHistory.map((msg, i) => <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed shadow-md ${msg.role === "user" ? "bg-white text-black" : "bg-[#18181b] text-gray-200 border border-gray-800"}`}>{msg.parts}</div></div>)}{chatLoading && <div className="text-gray-500 text-xs animate-pulse ml-4">Digitando...</div>}<div ref={chatEndRef} /></div>
+                                    <div className="p-4 border-t border-gray-800 bg-[#0a0a0a] flex gap-2"><input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleChatSend()} placeholder="Digite sua mensagem..." className="flex-1 bg-[#18181b] border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-purple-500 outline-none transition-all" /><button onClick={handleChatSend} disabled={chatLoading} className="bg-purple-600 hover:bg-purple-500 text-white p-3 rounded-xl transition-all shadow-lg"><Send className="w-5 h-5" /></button></div>
                                 </div>
                             </div>
                         )}
@@ -411,65 +347,16 @@ export default function Home() {
                                 <div className={`flex-1 flex flex-col gap-4 w-full ${resultUrl ? 'md:w-1/3' : 'md:max-w-2xl md:mx-auto'}`}>
                                     <div className="w-full bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
                                         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-500 via-orange-500 to-purple-500 opacity-20 group-hover:opacity-50 transition-opacity"></div>
-
-                                        <div className="relative w-full mb-4">
-                                            <div className="relative">
-                                                <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)} className="w-full bg-[#18181b] text-white border border-gray-700 rounded-xl p-3 pl-4 appearance-none cursor-pointer focus:border-yellow-500 outline-none text-sm font-medium">
-                                                    {ASPECT_RATIOS.filter(ratio => mode === "image" || ["16:9", "9:16"].includes(ratio.value)).map(ratio => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}
-                                                </select>
-                                                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                                            </div>
-                                            {mode === "video" && <p className="text-[10px] text-gray-500 mt-1 ml-2">Modo vídeo suporta apenas 16:9 e 9:16.</p>}
-                                        </div>
-
-                                        <div className="space-y-4 mb-6">
-                                            <div className="flex flex-wrap gap-3">
-                                                {imageFiles.map((file, idx) => (
-                                                    <div key={idx} className="relative w-20 h-20 bg-gray-800 rounded-xl overflow-hidden border border-gray-700 group/img">
-                                                        <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover opacity-70 group-hover/img:opacity-100 transition-opacity" />
-                                                        <button onClick={() => removeImage(idx)} className="absolute top-0.5 right-0.5 bg-black/50 text-white rounded-full p-0.5 hover:bg-red-500"><XCircle className="w-4 h-4" /></button>
-                                                    </div>
-                                                ))}
-                                                {((mode === "image" && imageFiles.length < 8) || (mode === "video" && imageFiles.length < 1)) && (
-                                                    <button onClick={() => fileInputRef.current?.click()} className="w-20 h-20 border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center text-gray-500 hover:text-white hover:border-gray-500 transition-all hover:bg-gray-800/50">
-                                                        <Plus className="w-6 h-6" /><span className="text-[9px] mt-1">{mode === 'video' ? 'Start Frame' : 'Add'}</span>
-                                                    </button>
-                                                )}
-                                                <input type="file" ref={fileInputRef} onChange={handleImageSelect} className="hidden" accept="image/*" multiple={mode === "image"} />
-                                            </div>
-                                            {isEditing && (
-                                                <div className="flex items-center gap-2 text-xs text-yellow-500 bg-yellow-500/10 p-2 rounded-lg border border-yellow-500/20">
-                                                    <Layers className="w-4 h-4" /> <span>Modo Edição Ativo</span> <button onClick={handleClearAll} className="ml-auto hover:underline text-white">Limpar</button>
-                                                </div>
-                                            )}
-                                        </div>
-
+                                        <div className="relative w-full mb-4"><div className="relative"><select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)} className="w-full bg-[#18181b] text-white border border-gray-700 rounded-xl p-3 pl-4 appearance-none cursor-pointer focus:border-yellow-500 outline-none text-sm font-medium">{ASPECT_RATIOS.filter(ratio => mode === "image" || ["16:9", "9:16"].includes(ratio.value)).map(ratio => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}</select><ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" /></div>{mode === "video" && <p className="text-[10px] text-gray-500 mt-1 ml-2">Modo vídeo suporta apenas 16:9 e 9:16.</p>}</div>
+                                        <div className="space-y-4 mb-6"><div className="flex flex-wrap gap-3">{imageFiles.map((file, idx) => (<div key={idx} className="relative w-20 h-20 bg-gray-800 rounded-xl overflow-hidden border border-gray-700 group/img"><img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover opacity-70 group-hover/img:opacity-100 transition-opacity" /><button onClick={() => removeImage(idx)} className="absolute top-0.5 right-0.5 bg-black/50 text-white rounded-full p-0.5 hover:bg-red-500"><XCircle className="w-4 h-4" /></button></div>))}{((mode === "image" && imageFiles.length < 8) || (mode === "video" && imageFiles.length < 1)) && (<button onClick={() => fileInputRef.current?.click()} className="w-20 h-20 border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center text-gray-500 hover:text-white hover:border-gray-500 transition-all hover:bg-gray-800/50"><Plus className="w-6 h-6" /><span className="text-[9px] mt-1">{mode === 'video' ? 'Start Frame' : 'Add'}</span></button>)}<input type="file" ref={fileInputRef} onChange={handleImageSelect} className="hidden" accept="image/*" multiple={mode === "image"} /></div>{isEditing && (<div className="flex items-center gap-2 text-xs text-yellow-500 bg-yellow-500/10 p-2 rounded-lg border border-yellow-500/20"><Layers className="w-4 h-4" /> <span>Modo Edição Ativo</span> <button onClick={handleClearAll} className="ml-auto hover:underline text-white">Limpar</button></div>)}</div>
                                         <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={isEditing ? "O que mudar?" : "Descreva sua criação..."} className="w-full bg-[#18181b] border border-gray-700 rounded-xl p-4 text-gray-200 h-40 mb-4 focus:border-yellow-500 outline-none transition-colors resize-none" />
-
-                                        <button onClick={handleGenerate} disabled={loading || !prompt || credits < currentCost} className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all shadow-xl ${loading || credits < currentCost ? "bg-gray-800 text-gray-500 cursor-not-allowed" : "bg-white text-black hover:bg-gray-200 hover:scale-[1.01]"}`}>
-                                            {loading ? <div className="animate-spin w-6 h-6 border-2 border-black border-t-transparent rounded-full" /> : <Sparkles className="w-5 h-5 fill-black" />}
-                                            {loading ? "Processando..." : (credits < currentCost ? "Saldo Insuficiente" : `Gerar (-${currentCost})`)}
-                                        </button>
+                                        <button onClick={handleGenerate} disabled={loading || !prompt || credits < currentCost} className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all shadow-xl ${loading || credits < currentCost ? "bg-gray-800 text-gray-500 cursor-not-allowed" : "bg-white text-black hover:bg-gray-200 hover:scale-[1.01]"}`}>{loading ? <div className="animate-spin w-6 h-6 border-2 border-black border-t-transparent rounded-full" /> : <Sparkles className="w-5 h-5 fill-black" />}{loading ? "Processando..." : (credits < currentCost ? "Saldo Insuficiente" : `Gerar (-${currentCost})`)}</button>
                                     </div>
                                 </div>
-
-                                {/* COLUNA DIREITA: RESULTADO (Fixo) */}
                                 {resultUrl && !loading && (
                                     <div className="flex-1 w-full md:w-2/3 bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl animate-in fade-in slide-in-from-right-4 h-fit sticky top-4">
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h3 className="text-gray-400 flex items-center gap-2 font-medium"><Sparkles className="w-4 h-4 text-green-500" /> Resultado</h3>
-                                            <div className="flex gap-2">
-                                                {/* BOTÃO ANIMAR (SÓ PARA IMAGEM) */}
-                                                {mode === "image" && (
-                                                    <button onClick={() => handleTransformToVideo(resultUrl)} className="p-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-white transition-colors" title="Animar"><PlayCircle className="w-4 h-4" /></button>
-                                                )}
-                                                <button onClick={() => handleShare(resultUrl, mode)} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white"><Share2 className="w-4 h-4" /></button>
-                                                <button onClick={() => handleDownload(resultUrl, mode)} className="p-2 bg-white text-black hover:bg-gray-200 rounded-lg"><Download className="w-4 h-4" /></button>
-                                            </div>
-                                        </div>
-                                        <div className="rounded-xl overflow-hidden border border-gray-800 bg-black/50 flex items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
-                                            {mode === "image" ? <img src={resultUrl} className="max-w-full max-h-[70vh] object-contain shadow-2xl" alt="result" /> : <video src={resultUrl} controls autoPlay loop className="max-w-full max-h-[70vh] shadow-2xl" />}
-                                        </div>
+                                        <div className="flex justify-between items-center mb-4"><h3 className="text-gray-400 flex items-center gap-2 font-medium"><Sparkles className="w-4 h-4 text-green-500" /> Resultado</h3><div className="flex gap-2">{mode === 'image' && <button onClick={() => handleTransformToVideo(resultUrl)} className="p-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-white transition-colors" title="Animar"><PlayCircle className="w-4 h-4" /></button>}<button onClick={() => handleShare(resultUrl, mode)} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white"><Share2 className="w-4 h-4" /></button><button onClick={() => handleDownload(resultUrl, mode)} className="p-2 bg-white text-black hover:bg-gray-200 rounded-lg"><Download className="w-4 h-4" /></button></div></div>
+                                        <div className="rounded-xl overflow-hidden border border-gray-800 bg-black/50 flex items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">{mode === "image" ? <img src={resultUrl} className="max-w-full max-h-[70vh] object-contain shadow-2xl" alt="result" /> : <video src={resultUrl} controls autoPlay loop className="max-w-full max-h-[70vh] shadow-2xl" />}</div>
                                     </div>
                                 )}
                             </div>
@@ -482,43 +369,16 @@ export default function Home() {
                                         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 opacity-30"></div>
                                         <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-6"><Shirt className="w-5 h-5 text-pink-500" /> Provador Virtual</h3>
                                         <div className="space-y-6">
-                                            <div className="space-y-2">
-                                                <label className="text-xs text-gray-400 font-bold uppercase flex justify-between">1. Foto da Pessoa <span>(Corpo Inteiro)</span></label>
-                                                <div className="relative group cursor-pointer" onClick={() => document.getElementById('input-person')?.click()}>
-                                                    <div className={`h-40 w-full rounded-xl border-2 border-dashed ${personFile ? 'border-pink-500' : 'border-gray-700'} flex items-center justify-center bg-[#121214] overflow-hidden hover:bg-[#1a1a1e] transition-colors`}>
-                                                        {personFile ? <img src={URL.createObjectURL(personFile)} className="w-full h-full object-cover" alt="pessoa" /> : <div className="text-center text-gray-500"><Upload className="w-8 h-8 mx-auto mb-2" /><span className="text-xs">Toque para enviar</span></div>}
-                                                    </div>
-                                                    <input id="input-person" type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && setPersonFile(e.target.files[0])} />
-                                                </div>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-xs text-gray-400 font-bold uppercase flex justify-between">2. Foto da Roupa <span>(Fundo Liso)</span></label>
-                                                <div className="relative group cursor-pointer" onClick={() => document.getElementById('input-garment')?.click()}>
-                                                    <div className={`h-40 w-full rounded-xl border-2 border-dashed ${garmentFile ? 'border-pink-500' : 'border-gray-700'} flex items-center justify-center bg-[#121214] overflow-hidden hover:bg-[#1a1a1e] transition-colors`}>
-                                                        {garmentFile ? <img src={URL.createObjectURL(garmentFile)} className="w-full h-full object-cover" alt="roupa" /> : <div className="text-center text-gray-500"><Shirt className="w-8 h-8 mx-auto mb-2" /><span className="text-xs">Toque para enviar</span></div>}
-                                                    </div>
-                                                    <input id="input-garment" type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && setGarmentFile(e.target.files[0])} />
-                                                </div>
-                                            </div>
-                                            <button onClick={handleTryOn} disabled={loading || !personFile || !garmentFile} className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg ${loading || !personFile || !garmentFile ? "bg-gray-800 text-gray-500" : "bg-gradient-to-r from-pink-600 to-purple-600 text-white hover:scale-[1.02] transition-transform"}`}>
-                                                {loading ? "Provando..." : `Vestir Agora (-10 Créditos)`}
-                                            </button>
+                                            <div className="space-y-2"><label className="text-xs text-gray-400 font-bold uppercase flex justify-between">1. Foto da Pessoa <span>(Corpo Inteiro)</span></label><div className="relative group cursor-pointer" onClick={() => document.getElementById('input-person')?.click()}><div className={`h-40 w-full rounded-xl border-2 border-dashed ${personFile ? 'border-pink-500' : 'border-gray-700'} flex items-center justify-center bg-[#121214] overflow-hidden hover:bg-[#1a1a1e] transition-colors`}>{personFile ? <img src={URL.createObjectURL(personFile)} className="w-full h-full object-cover" alt="pessoa" /> : <div className="text-center text-gray-500"><Upload className="w-8 h-8 mx-auto mb-2" /><span className="text-xs">Toque para enviar</span></div>}</div><input id="input-person" type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && setPersonFile(e.target.files[0])} /></div></div>
+                                            <div className="space-y-2"><label className="text-xs text-gray-400 font-bold uppercase flex justify-between">2. Foto da Roupa <span>(Fundo Liso)</span></label><div className="relative group cursor-pointer" onClick={() => document.getElementById('input-garment')?.click()}><div className={`h-40 w-full rounded-xl border-2 border-dashed ${garmentFile ? 'border-pink-500' : 'border-gray-700'} flex items-center justify-center bg-[#121214] overflow-hidden hover:bg-[#1a1a1e] transition-colors`}>{garmentFile ? <img src={URL.createObjectURL(garmentFile)} className="w-full h-full object-cover" alt="roupa" /> : <div className="text-center text-gray-500"><Shirt className="w-8 h-8 mx-auto mb-2" /><span className="text-xs">Toque para enviar</span></div>}</div><input id="input-garment" type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files && setGarmentFile(e.target.files[0])} /></div></div>
+                                            <button onClick={handleTryOn} disabled={loading || !personFile || !garmentFile} className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg ${loading || !personFile || !garmentFile ? "bg-gray-800 text-gray-500" : "bg-gradient-to-r from-pink-600 to-purple-600 text-white hover:scale-[1.02] transition-transform"}`}>{loading ? "Provando..." : `Vestir Agora (-10 Créditos)`}</button>
                                         </div>
                                     </div>
                                 </div>
-
                                 {resultUrl && !loading && (
                                     <div className="flex-1 w-full md:w-2/3 bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl animate-in fade-in slide-in-from-right-4 h-fit sticky top-4">
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h3 className="text-gray-400 flex items-center gap-2 font-medium"><Sparkles className="w-4 h-4 text-pink-500" /> Resultado</h3>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => handleShare(resultUrl, 'image')} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white"><Share2 className="w-4 h-4" /></button>
-                                                <button onClick={() => handleDownload(resultUrl, 'image')} className="p-2 bg-white text-black hover:bg-gray-200 rounded-lg"><Download className="w-4 h-4" /></button>
-                                            </div>
-                                        </div>
-                                        <div className="rounded-xl overflow-hidden border border-gray-800 bg-black/50 flex items-center justify-center">
-                                            <img src={resultUrl} className="max-w-full max-h-[70vh] object-contain shadow-2xl" alt="resultado" />
-                                        </div>
+                                        <div className="flex justify-between items-center mb-4"><h3 className="text-gray-400 flex items-center gap-2 font-medium"><Sparkles className="w-4 h-4 text-pink-500" /> Resultado</h3><div className="flex gap-2"><button onClick={() => handleShare(resultUrl, 'image')} className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white"><Share2 className="w-4 h-4" /></button><button onClick={() => handleDownload(resultUrl, 'image')} className="p-2 bg-white text-black hover:bg-gray-200 rounded-lg"><Download className="w-4 h-4" /></button></div></div>
+                                        <div className="rounded-xl overflow-hidden border border-gray-800 bg-black/50 flex items-center justify-center"><img src={resultUrl} className="max-w-full max-h-[70vh] object-contain shadow-2xl" alt="resultado" /></div>
                                     </div>
                                 )}
                             </div>
@@ -531,9 +391,7 @@ export default function Home() {
                                     {history.map((item) => (
                                         <div key={item.id} onClick={() => setSelectedMedia(item)} className="aspect-square bg-gray-900 rounded-xl overflow-hidden border border-gray-800 relative group cursor-pointer hover:border-white transition-colors">
                                             {item.type === 'image' ? <img src={item.url} className="w-full h-full object-cover" alt="gallery" /> : <video src={item.url} className="w-full h-full object-cover" muted />}
-                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                <Eye className="w-8 h-8 text-white drop-shadow-lg" />
-                                            </div>
+                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><Eye className="w-8 h-8 text-white drop-shadow-lg" /></div>
                                         </div>
                                     ))}
                                 </div>
