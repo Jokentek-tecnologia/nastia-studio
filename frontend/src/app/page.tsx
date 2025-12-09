@@ -15,14 +15,14 @@ import Login from "../components/Login";
 import StoreModal from "../components/StoreModal";
 import AdPlayer from "../components/AdPlayer";
 import GamifiedReferral from "../components/GamifiedReferral";
-import ApiKeyModal from "../components/ApiKeyModal";
 import SupportWidget from "../components/SupportWidget";
+import ApiKeyModal from "@/components/ApiKeyModal";
 
-// Carregamento dinâmico do editor
 const ImageEditor = dynamic(() => import("../components/ImageEditor"), { ssr: false, loading: () => <div className="text-white text-center p-10">Carregando Editor...</div> });
 
-const SHORT_ADS = ["https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"];
-const LONG_ADS = ["https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"];
+// Substitua pelos seus links reais do Supabase
+const SHORT_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
+const LONG_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 
 const ASPECT_RATIOS = [
     { value: "16:9", label: "Horizontal (16:9)" }, { value: "9:16", label: "Vertical (9:16)" },
@@ -38,6 +38,7 @@ const PERSONAS = [
 ];
 
 export default function Home() {
+    // Estados Globais
     const [session, setSession] = useState<any>(null);
     const [credits, setCredits] = useState<number>(0);
     const [coins, setCoins] = useState<number>(0);
@@ -45,41 +46,59 @@ export default function Home() {
     const [referralCode, setReferralCode] = useState<string>("");
     const [authLoading, setAuthLoading] = useState(true);
 
+    // Navegação
     const [mode, setMode] = useState<"home" | "image" | "video" | "gallery" | "chat" | "tryon">("home");
+
+    // Estados de Criação
     const [prompt, setPrompt] = useState("");
     const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [isMobile, setIsMobile] = useState(false);
     const [aspectRatio, setAspectRatio] = useState<string>("16:9");
 
-    // Try-On States
+    // Estados Try-On
     const [personFile, setPersonFile] = useState<File | null>(null);
     const [garmentFile, setGarmentFile] = useState<File | null>(null);
 
+    // Estados de Resultado e Anúncio (CORREÇÃO AQUI)
     const [resultUrl, setResultUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [currentAdUrl, setCurrentAdUrl] = useState("");
     const [pendingResult, setPendingResult] = useState<string | null>(null);
+    const [adFinished, setAdFinished] = useState(false); // NOVO: Monitora se o vídeo acabou
     const [adProgress, setAdProgress] = useState(0);
 
     const [history, setHistory] = useState<any[]>([]);
     const [notifications, setNotifications] = useState<any[]>([]);
     const [showNotifications, setShowNotifications] = useState(false);
 
+    // Modais
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isStoreOpen, setIsStoreOpen] = useState(false);
     const [isReferralOpen, setIsReferralOpen] = useState(false);
     const [isApiKeyOpen, setIsApiKeyOpen] = useState(false);
     const [hasCustomKey, setHasCustomKey] = useState(false);
-
     const [selectedMedia, setSelectedMedia] = useState<any>(null);
 
-    // Chat States
+    // Chat
     const [chatHistory, setChatHistory] = useState<{ role: string, parts: string }[]>([]);
     const [chatInput, setChatInput] = useState("");
     const [chatLoading, setChatLoading] = useState(false);
     const [currentPersona, setCurrentPersona] = useState(PERSONAS[0]);
     const chatEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // --- EFEITO VIGILANTE (CORREÇÃO DE BUG DO ANÚNCIO) ---
+    // Este efeito roda sempre que o status do anúncio ou do resultado muda
+    useEffect(() => {
+        if (adFinished && pendingResult) {
+            // Se o anúncio acabou E o resultado chegou: MOSTRA O RESULTADO
+            setResultUrl(pendingResult);
+            setLoading(false);
+            setPendingResult(null);
+            setAdFinished(false);
+        }
+    }, [adFinished, pendingResult]);
+    // -----------------------------------------------------
 
     useEffect(() => {
         const check = () => setIsMobile(window.innerWidth < 768);
@@ -128,7 +147,14 @@ export default function Home() {
 
     const handleEditFromGallery = async (url: string) => { setResultUrl(url); setIsEditorOpen(true); setSelectedMedia(null); }
     const handleMobileEditClick = () => { alert("Para editar, use o chat."); };
-    const prepareAd = () => { const list = mode === "image" ? SHORT_ADS : LONG_ADS; setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]); setAdProgress(0); };
+
+    // Prepara Anúncio: Reseta estados
+    const prepareAd = () => {
+        const list = mode === "image" || mode === "tryon" ? SHORT_ADS : LONG_ADS;
+        setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]);
+        setAdProgress(0);
+        setAdFinished(false); // Reseta flag de término
+    };
 
     const handleGenerate = async () => {
         if (!prompt) return;
@@ -137,10 +163,15 @@ export default function Home() {
         if (mode === "image" && (imageFiles.length > 1 || isEditingContext)) cost = 10;
         if (mode === "video") cost = 50;
 
-        if (credits < cost && !hasCustomKey) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
+        if (credits < cost) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
         if (mode === "video" && !["plus", "pro", "agency", "criação"].includes(plan)) { alert("Vídeos são exclusivos para assinantes Plus e Pro."); setIsStoreOpen(true); return; }
 
-        prepareAd(); setLoading(true); const previousResult = resultUrl; setResultUrl(null); setPendingResult(null);
+        prepareAd();
+        setLoading(true);
+        setResultUrl(null); // Limpa resultado anterior
+        setPendingResult(null);
+
+        const previousResult = resultUrl;
         const formData = new FormData(); formData.append("user_id", session.user.id); formData.append("aspect_ratio", aspectRatio);
 
         if (isEditingContext) formData.append("prompt", `EDIT IMAGE: ${prompt}`); else formData.append("prompt", prompt);
@@ -153,17 +184,29 @@ export default function Home() {
 
             const endpoint = mode === "image" ? `${process.env.NEXT_PUBLIC_API_URL}/generate-image` : `${process.env.NEXT_PUBLIC_API_URL}/generate-video`;
             const res = await axios.post(endpoint, formData, { headers: { "Content-Type": "multipart/form-data" } });
-            fetchProfile(session.user.id); fetchHistory(session.user.id);
+
+            fetchProfile(session.user.id);
+            fetchHistory(session.user.id);
+
+            // Define o resultado PENDENTE (o useEffect lá em cima vai liberar quando o anúncio acabar)
             const url = res.data.image || res.data.video;
-            if (mode === "video") { setResultUrl(url); setLoading(false); } else { setPendingResult(url); }
-        } catch (error: any) { alert(error.response?.data?.detail || "Erro."); setLoading(false); if (mode === "image") setResultUrl(previousResult); }
+            setPendingResult(url);
+
+        } catch (error: any) {
+            alert(error.response?.data?.detail || "Erro.");
+            setLoading(false);
+            if (mode === "image") setResultUrl(previousResult);
+        }
     };
 
     const handleTryOn = async () => {
         if (!personFile || !garmentFile) return alert("Selecione as duas fotos.");
         if (credits < 10) { alert("Saldo insuficiente."); setIsStoreOpen(true); return; }
 
-        prepareAd(); setLoading(true); setResultUrl(null); setPendingResult(null);
+        prepareAd();
+        setLoading(true);
+        setResultUrl(null);
+        setPendingResult(null);
 
         const formData = new FormData();
         formData.append("user_id", session.user.id);
@@ -172,8 +215,12 @@ export default function Home() {
 
         try {
             const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/generate-tryon`, formData, { headers: { "Content-Type": "multipart/form-data" } });
-            fetchProfile(session.user.id); setPendingResult(res.data.image);
-        } catch (error: any) { alert(error.response?.data?.detail || "Erro."); setLoading(false); }
+            fetchProfile(session.user.id);
+            setPendingResult(res.data.image); // Define pendente para o useEffect pegar
+        } catch (error: any) {
+            alert(error.response?.data?.detail || "Erro.");
+            setLoading(false);
+        }
     };
 
     const handleChatSend = async () => {
@@ -188,12 +235,20 @@ export default function Home() {
         } catch (e) { setChatHistory(prev => [...prev, { role: "model", parts: "Erro de conexão." }]); } finally { setChatLoading(false); }
     };
 
-    const handleAdEnded = () => { if ((mode === "image" || mode === "tryon") && pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
-    const handleSkipAd = () => { if (pendingResult) { setResultUrl(pendingResult); setLoading(false); setPendingResult(null); } };
+    // Handler quando o vídeo acaba
+    const handleAdEnded = () => {
+        setAdFinished(true); // Marca que o anúncio acabou. O useEffect faz o resto.
+    };
+
+    // Handler para pular (Força o término)
+    const handleSkipAd = () => {
+        setAdFinished(true);
+    };
+
     const copyReferral = () => { navigator.clipboard.writeText(`https://nastia-studio.netlify.app?ref=${referralCode}`); alert("Link Copiado!"); }
     const handleDownload = (url: string, type: string) => { const link = document.createElement("a"); link.href = url; link.download = `NastIA.${type === 'image' ? 'jpg' : 'mp4'}`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
     const handleShare = async (url: string, type: string) => { if (navigator.share) try { const res = await fetch(url); const blob = await res.blob(); await navigator.share({ files: [new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type })] }); } catch (e) { } else alert("Use Baixar."); };
-    useEffect(() => { if (loading) { const i = setInterval(() => setAdProgress(o => (o < 95 ? o + 0.5 : o)), 100); return () => clearInterval(i); } }, [loading]);
+    useEffect(() => { if (loading && !adFinished) { const i = setInterval(() => setAdProgress(o => (o < 95 ? o + 0.5 : o)), 100); return () => clearInterval(i); } }, [loading, adFinished]);
 
     const toggleStore = () => { setIsStoreOpen(!isStoreOpen); setShowNotifications(false); };
     const toggleNotifications = () => { setShowNotifications(!showNotifications); setIsStoreOpen(false); };
@@ -208,10 +263,13 @@ export default function Home() {
         <main className="h-screen bg-[#050505] text-white flex flex-col font-sans overflow-hidden">
             <header className="h-16 shrink-0 border-b border-gray-800 bg-black/50 backdrop-blur-md flex justify-between items-center px-4 z-30">
                 <div className="flex items-center gap-3 cursor-pointer" onClick={() => setMode('home')}>
-                    <img src="/app-logo.png" alt="NastIA Logo" className="h-8 w-auto" />
+                    <img src="/app-logo.png" alt="NastIA" className="h-8 w-auto" />
                     <div className="hidden sm:block"><h1 className="font-bold text-lg leading-none">NastIA Studio</h1></div>
                 </div>
                 <div className="flex items-center gap-3">
+                    <button onClick={() => setIsApiKeyOpen(true)} className={`hidden md:flex items-center gap-2 border px-3 py-1 rounded-full text-xs font-bold hover:scale-105 transition-transform ${hasCustomKey ? "bg-green-900/30 border-green-500 text-green-400" : "bg-gray-800 border-gray-600 text-gray-400"}`}>
+                        <Key className="w-3 h-3" /> {hasCustomKey ? "Turbo" : "Grátis"}
+                    </button>
                     <button onClick={() => setIsReferralOpen(true)} className="flex items-center gap-2 bg-gradient-to-r from-purple-900 to-pink-900 border border-purple-500/30 p-2 md:px-3 md:py-1 rounded-full hover:scale-105 transition-transform"><Gift className="w-4 h-4 text-pink-400" /> <span className="text-xs font-bold text-pink-100 hidden md:inline">Prêmios</span></button>
                     <div className="flex flex-col items-end cursor-pointer hover:opacity-80 transition-opacity" onClick={toggleStore}><div className="flex items-center gap-1 text-yellow-500 font-bold"><Coins className="w-4 h-4" /> <span className="text-sm">{credits}</span></div></div>
                     <div className="relative">
@@ -231,6 +289,7 @@ export default function Home() {
             {isEditorOpen && resultUrl && <ImageEditor imageUrl={resultUrl} onClose={() => setIsEditorOpen(false)} />}
             {isStoreOpen && <StoreModal userId={session.user.id} currentPlan={plan} referralCode={referralCode} onClose={() => setIsStoreOpen(false)} onUpdate={() => fetchProfile(session.user.id)} />}
             {isReferralOpen && referralCode && <GamifiedReferral userId={session.user.id} referralCode={referralCode} onClose={() => setIsReferralOpen(false)} />}
+            {isApiKeyOpen && <ApiKeyModal userId={session.user.id} onClose={() => setIsApiKeyOpen(false)} onSuccess={() => { setHasCustomKey(true); fetchProfile(session.user.id); }} />}
             <SupportWidget userId={session.user.id} userName={session.user.user_metadata.full_name} />
 
             {selectedMedia && (
@@ -244,7 +303,23 @@ export default function Home() {
             )}
 
             {loading && (
-                <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center"><div className="animate-pulse text-yellow-500 mb-4"><Sparkles className="w-8 h-8 mx-auto" /></div><div className="w-full h-full absolute inset-0"><AdPlayer src={currentAdUrl} onEnded={handleAdEnded} /></div><div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} /></div></div>
+                <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center">
+                    <div className="animate-pulse text-yellow-500 mb-4"><Sparkles className="w-8 h-8 mx-auto" /></div>
+                    <div className="w-full h-full absolute inset-0"><AdPlayer src={currentAdUrl} onEnded={handleAdEnded} /></div>
+
+                    {/* Botão de Pular ou Mensagem de Espera */}
+                    {pendingResult ? (
+                        <button onClick={handleSkipAd} className="absolute bottom-10 bg-green-500 text-black px-6 py-3 rounded-full font-bold shadow-lg animate-bounce flex items-center gap-2">
+                            <CheckCircle className="w-5 h-5" /> SEU RESULTADO ESTÁ PRONTO!
+                        </button>
+                    ) : (
+                        <div className="absolute bottom-10 bg-black/50 text-white/70 px-4 py-2 rounded-full text-xs backdrop-blur-md">
+                            Criando sua arte... {Math.round(adProgress)}%
+                        </div>
+                    )}
+
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} /></div>
+                </div>
             )}
 
             <div className="flex-1 w-full flex flex-col overflow-hidden relative">
@@ -378,6 +453,7 @@ export default function Home() {
                                     </div>
                                 </div>
 
+                                {/* COLUNA DIREITA: RESULTADO (Fixo) */}
                                 {resultUrl && !loading && (
                                     <div className="flex-1 w-full md:w-2/3 bg-[#0f0f10] border border-gray-800 rounded-3xl p-6 shadow-2xl animate-in fade-in slide-in-from-right-4 h-fit sticky top-4">
                                         <div className="flex justify-between items-center mb-4">
