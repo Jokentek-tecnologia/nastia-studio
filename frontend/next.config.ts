@@ -2,15 +2,21 @@
 const nextConfig = {
   reactStrictMode: true,
   eslint: {
-    // Atenção: Isso permite o deploy mesmo com erros de lint (variáveis não usadas, etc)
+    // ISSO É O QUE VAI SALVAR SEU DEPLOY
+    // Manda o Netlify ignorar erros de "variável não usada" e subir o site
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // Atenção: Isso permite o deploy mesmo com erros de tipo
+    // Manda ignorar erros de tipagem
     ignoreBuildErrors: true,
   },
   images: {
-    domains: ['lpiotuazwilvxhdjxgjo.supabase.co'], // Permite imagens do seu Supabase
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+    ],
     unoptimized: true,
   },
 }

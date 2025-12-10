@@ -5,7 +5,7 @@ import axios from "axios";
 import {
     Sparkles, Image as ImageIcon, Video as VideoIcon, Shirt,
     XCircle, LogOut, Coins, Gift,
-    Share2, Download, Instagram, Globe, MessageCircle, Plus,
+    Share2, Download, Instagram, Plus,
     ArrowRightCircle, Layers, Clock, CheckCircle, Bell, ExternalLink, ChevronDown,
     X, MessageSquare, Send, Bot, PlayCircle, Eye, Upload
 } from "lucide-react";
@@ -17,12 +17,12 @@ import AdPlayer from "../components/AdPlayer";
 import GamifiedReferral from "../components/GamifiedReferral";
 import SupportWidget from "../components/SupportWidget";
 
-// Carregamento dinâmico
 const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
     ssr: false,
     loading: () => <div className="text-white text-center p-10">Carregando Editor...</div>
 });
 
+// LINKS DO SUPABASE
 const SHORT_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 const LONG_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 
@@ -167,10 +167,13 @@ export default function Home() {
 
             const endpoint = mode === "image" ? `${process.env.NEXT_PUBLIC_API_URL}/generate-image` : `${process.env.NEXT_PUBLIC_API_URL}/generate-video`;
             const res = await axios.post(endpoint, formData, { headers: { "Content-Type": "multipart/form-data" } });
+
             fetchProfile(session.user.id); fetchHistory(session.user.id);
             setPendingResult(res.data.image || res.data.video);
+
         } catch (error: any) {
-            alert(error.response?.data?.detail || "Erro."); setLoading(false);
+            alert(error.response?.data?.detail || "Erro na geração.");
+            setLoading(false);
             if (mode === "image") setResultUrl(previousResult);
         }
     };
