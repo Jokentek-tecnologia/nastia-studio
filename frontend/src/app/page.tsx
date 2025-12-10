@@ -6,9 +6,8 @@ import {
     Sparkles, Image as ImageIcon, Video as VideoIcon, Shirt,
     XCircle, LogOut, Coins, Gift,
     Share2, Download, Instagram, Globe, MessageCircle, Plus,
-    Layers, Clock, CheckCircle, Bell, ExternalLink, ChevronDown,
-    X, Send, Bot, PlayCircle, Eye, Upload, ArrowRightCircle,
-    MessageSquare
+    ArrowRightCircle, Layers, Clock, CheckCircle, Bell, ExternalLink, ChevronDown,
+    X, MessageSquare, Send, Bot, PlayCircle, Eye, Upload
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { supabase } from "../lib/supabase";
@@ -24,7 +23,6 @@ const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
     loading: () => <div className="text-white text-center p-10">Carregando Editor...</div>
 });
 
-// SEUS LINKS REAIS DO SUPABASE
 const SHORT_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 const LONG_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 
@@ -98,7 +96,12 @@ export default function Home() {
 
     const fetchProfile = async (userId: string) => {
         const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (data) { setCredits(data.credits); setPlan(data.plan_tier); setReferralCode(data.referral_code); setCoins(data.coins || 0); }
+        if (data) {
+            setCredits(data.credits);
+            setPlan(data.plan_tier);
+            setReferralCode(data.referral_code);
+            setCoins(data.coins || 0);
+        }
     };
 
     const fetchHistory = async (userId: string) => {
@@ -205,6 +208,7 @@ export default function Home() {
 
     const handleAdEnded = () => { setAdFinished(true); };
     const handleSkipAd = () => { setAdFinished(true); };
+
     const copyReferral = () => { navigator.clipboard.writeText(`https://nastia-studio.netlify.app?ref=${referralCode}`); alert("Link Copiado!"); }
     const handleDownload = (url: string, type: string) => { const link = document.createElement("a"); link.href = url; link.download = `NastIA.${type === 'image' ? 'jpg' : 'mp4'}`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
     const handleShare = async (url: string, type: string) => { if (navigator.share) try { const res = await fetch(url); const blob = await res.blob(); await navigator.share({ files: [new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type })] }); } catch (e) { } else alert("Use Baixar."); };
@@ -289,16 +293,6 @@ export default function Home() {
                                     <div onClick={() => setMode('tryon')} className="bg-[#121214] p-6 rounded-3xl border border-gray-800 hover:border-pink-500/50 cursor-pointer group transition-all hover:bg-[#18181b] shadow-lg"><div className="bg-pink-900/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform text-pink-400"><Shirt className="w-7 h-7" /></div><h3 className="font-bold text-xl text-white">Provador</h3><p className="text-sm text-gray-400 mt-2 leading-relaxed">Vista roupas em fotos.</p></div>
                                 </div>
                                 <div className="text-center pt-6"><button onClick={() => setMode('gallery')} className="text-sm text-gray-500 hover:text-white flex items-center justify-center gap-2 mx-auto transition-colors"><Clock className="w-4 h-4" /> Ver meu histórico recente</button></div>
-                            </div>
-                        )}
-
-                        {mode !== 'home' && (
-                            <div className="md:hidden flex w-full bg-gray-900 p-1.5 rounded-2xl border border-gray-800 overflow-x-auto shrink-0 mb-4 sticky top-0 z-20 shadow-xl">
-                                <button onClick={() => setMode("chat")} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "chat" ? "bg-purple-900/50 text-purple-200" : "text-gray-500"}`}>Chat</button>
-                                <button onClick={() => { setMode("image"); setImageFiles([]); }} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "image" ? "bg-blue-900/50 text-blue-200" : "text-gray-500"}`}>Img</button>
-                                <button onClick={() => { setMode("video"); setImageFiles([]); setAspectRatio("16:9"); }} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "video" ? "bg-orange-900/50 text-orange-200" : "text-gray-500"}`}>Vídeo</button>
-                                <button onClick={() => setMode("tryon")} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "tryon" ? "bg-pink-900/50 text-pink-200" : "text-gray-500"}`}>Provador</button>
-                                <button onClick={() => setMode("gallery")} className={`flex-1 py-2 rounded-lg text-xs font-bold ${mode === "gallery" ? "bg-yellow-900/50 text-yellow-200" : "text-gray-500"}`}>Galeria</button>
                             </div>
                         )}
 
