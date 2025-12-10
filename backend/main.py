@@ -45,10 +45,9 @@ app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
 
-# --- PREÇOS ATUALIZADOS ---
 COST_IMAGE = 10
 COST_VIDEO = 50
-COST_TRYON = 10  # CORRIGIDO PARA 10
+COST_TRYON = 10
 
 class ChatRequest(BaseModel):
     user_id: str
@@ -148,7 +147,7 @@ def get_vertex_token():
         return None
 
 @app.get("/")
-def read_root(): return {"status": "NastIA Studio V18 (TryOn Fix) Online 🚀"}
+def read_root(): return {"status": "NastIA V19 (Video Debug) Online 🚀"}
 
 @app.post("/generate-image")
 async def generate_image(
@@ -220,10 +219,16 @@ async def generate_video(
         if file_start:
             s_bytes = await file_start.read()
             veo_params["image"] = types.Image(image_bytes=s_bytes, mime_type=file_start.content_type or "image/jpeg")
+        
         operation = client.models.generate_videos(**veo_params)
+        
+        # LOG DE DEBUG: Vamos ver o que está acontecendo
+        print("Iniciando geração de vídeo...")
         while not operation.done:
+            print("Processando vídeo...")
             time.sleep(5)
             operation = client.operations.get(operation)
+
         res = operation.result
         if res and res.generated_videos:
             v_bytes = client.files.download(file=res.generated_videos[0].video)
@@ -231,10 +236,15 @@ async def generate_video(
             public_url = upload_to_supabase(final_bytes, "mp4", "video/mp4")
             save_to_history(user_id, "video", public_url, prompt)
             return {"video": public_url}
-        raise Exception("API Veo falhou.")
+        
+        # Se chegou aqui, é porque operation.done = True mas não tem vídeo.
+        # Isso geralmente é Safety Filter.
+        print(f"Erro Veo Result Vazio: {res}")
+        raise Exception("API Veo falhou (Possível filtro de segurança ou erro interno).")
+
     except Exception as e:
         if "403" not in str(e): refund_credits(user_id, cost)
-        print(f"Erro Vídeo: {e}")
+        print(f"Erro Vídeo CRÍTICO: {e}")
         status = 403 if "disponível apenas" in str(e) else 500
         raise HTTPException(status, str(e))
 

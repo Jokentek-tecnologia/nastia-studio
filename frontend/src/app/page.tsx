@@ -6,8 +6,9 @@ import {
     Sparkles, Image as ImageIcon, Video as VideoIcon, Shirt,
     XCircle, LogOut, Coins, Gift,
     Share2, Download, Instagram, Globe, MessageCircle, Plus,
-    ArrowRightCircle, Layers, Clock, CheckCircle, Bell, ExternalLink, ChevronDown,
-    X, MessageSquare, Send, Bot, PlayCircle, Eye, Upload
+    Layers, Clock, CheckCircle, Bell, ExternalLink, ChevronDown,
+    X, Send, Bot, PlayCircle, Eye, Upload, ArrowRightCircle,
+    MessageSquare
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { supabase } from "../lib/supabase";
@@ -16,11 +17,14 @@ import StoreModal from "../components/StoreModal";
 import AdPlayer from "../components/AdPlayer";
 import GamifiedReferral from "../components/GamifiedReferral";
 import SupportWidget from "../components/SupportWidget";
-// ApiKeyModal removido pois o modo Turbo foi cancelado e gerava erro de variável não usada
 
-const ImageEditor = dynamic(() => import("../components/ImageEditor"), { ssr: false, loading: () => <div className="text-white text-center p-10">Carregando Editor...</div> });
+// Carregamento dinâmico
+const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
+    ssr: false,
+    loading: () => <div className="text-white text-center p-10">Carregando Editor...</div>
+});
 
-// SEUS LINKS DO SUPABASE
+// SEUS LINKS REAIS DO SUPABASE
 const SHORT_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 const LONG_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 
@@ -38,7 +42,6 @@ const PERSONAS = [
 ];
 
 export default function Home() {
-    // Estados Globais
     const [session, setSession] = useState<any>(null);
     const [credits, setCredits] = useState<number>(0);
     const [coins, setCoins] = useState<number>(0);
@@ -46,20 +49,15 @@ export default function Home() {
     const [referralCode, setReferralCode] = useState<string>("");
     const [authLoading, setAuthLoading] = useState(true);
 
-    // Navegação
     const [mode, setMode] = useState<"home" | "image" | "video" | "gallery" | "chat" | "tryon">("home");
-
-    // Estados de Criação
     const [prompt, setPrompt] = useState("");
     const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [isMobile, setIsMobile] = useState(false);
     const [aspectRatio, setAspectRatio] = useState<string>("16:9");
 
-    // Estados Try-On
     const [personFile, setPersonFile] = useState<File | null>(null);
     const [garmentFile, setGarmentFile] = useState<File | null>(null);
 
-    // Estados de Resultado e Anúncio
     const [resultUrl, setResultUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [currentAdUrl, setCurrentAdUrl] = useState("");
@@ -71,14 +69,11 @@ export default function Home() {
     const [notifications, setNotifications] = useState<any[]>([]);
     const [showNotifications, setShowNotifications] = useState(false);
 
-    // Modais
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isStoreOpen, setIsStoreOpen] = useState(false);
     const [isReferralOpen, setIsReferralOpen] = useState(false);
-    // isApiKeyOpen removido para limpar código
     const [selectedMedia, setSelectedMedia] = useState<any>(null);
 
-    // Chat
     const [chatHistory, setChatHistory] = useState<{ role: string, parts: string }[]>([]);
     const [chatInput, setChatInput] = useState("");
     const [chatLoading, setChatLoading] = useState(false);
@@ -86,7 +81,6 @@ export default function Home() {
     const chatEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // --- EFEITO VIGILANTE (Monitora Anúncio) ---
     useEffect(() => {
         if (adFinished && pendingResult) {
             setResultUrl(pendingResult);
@@ -104,12 +98,7 @@ export default function Home() {
 
     const fetchProfile = async (userId: string) => {
         const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (data) {
-            setCredits(data.credits);
-            setPlan(data.plan_tier);
-            setReferralCode(data.referral_code);
-            setCoins(data.coins || 0);
-        }
+        if (data) { setCredits(data.credits); setPlan(data.plan_tier); setReferralCode(data.referral_code); setCoins(data.coins || 0); }
     };
 
     const fetchHistory = async (userId: string) => {
@@ -123,14 +112,7 @@ export default function Home() {
     };
 
     const handleLoginSuccess = async (session: any) => { fetchProfile(session.user.id); fetchHistory(session.user.id); fetchNotifications(); };
-
-    useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); if (session) handleLoginSuccess(session); setAuthLoading(false); });
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => { setSession(session); if (session) handleLoginSuccess(session); else setAuthLoading(false); });
-        return () => subscription.unsubscribe();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
+    useEffect(() => { supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); if (session) handleLoginSuccess(session); setAuthLoading(false); }); const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => { setSession(session); if (session) handleLoginSuccess(session); else setAuthLoading(false); }); return () => subscription.unsubscribe(); }, []);
     useEffect(() => { if (mode === 'chat') chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory, mode]);
 
     const handleLogout = async () => await supabase.auth.signOut();
@@ -138,19 +120,11 @@ export default function Home() {
     const removeImage = (index: number) => { setImageFiles(prev => prev.filter((_, i) => i !== index)); };
     const handleClearAll = () => { setResultUrl(null); setImageFiles([]); setPrompt(""); };
 
-    // --- FUNÇÃO DE TRANSFORMAR EM VÍDEO (Com Trava de Plano) ---
     const handleTransformToVideo = async (targetUrl: string | null) => {
         const urlToUse = targetUrl || resultUrl || selectedMedia?.url;
         if (!urlToUse) return;
-
-        // TRAVA DE PLANO
-        if (!["plus", "pro", "agency", "criação"].includes(plan)) {
-            alert("A criação de vídeo é exclusiva para planos Plus e Pro.");
-            setIsStoreOpen(true);
-            return;
-        }
-
         try {
+            if (!["plus", "pro", "agency", "criação"].includes(plan)) { alert("A criação de vídeo é exclusiva para planos Plus e Pro."); setIsStoreOpen(true); return; }
             const res = await fetch(urlToUse); const blob = await res.blob(); const file = new File([blob], "base.jpg", { type: "image/jpeg" });
             setMode("video"); setImageFiles([file]); setResultUrl(null); setPrompt(""); setSelectedMedia(null);
         } catch (e) { }
@@ -173,18 +147,9 @@ export default function Home() {
         if (mode === "video") cost = 50;
 
         if (credits < cost) { alert(`Saldo insuficiente!`); setIsStoreOpen(true); return; }
+        if (mode === "video" && !["plus", "pro", "agency", "criação"].includes(plan)) { alert("Vídeos são exclusivos para assinantes Plus e Pro."); setIsStoreOpen(true); return; }
 
-        // TRAVA DE PLANO PARA MODO VÍDEO
-        if (mode === "video" && !["plus", "pro", "agency", "criação"].includes(plan)) {
-            alert("Vídeos são exclusivos para assinantes Plus e Pro.");
-            setIsStoreOpen(true);
-            return;
-        }
-
-        prepareAd();
-        setLoading(true);
-        setResultUrl(null);
-        setPendingResult(null);
+        prepareAd(); setLoading(true); setResultUrl(null); setPendingResult(null);
 
         const previousResult = resultUrl;
         const formData = new FormData(); formData.append("user_id", session.user.id); formData.append("aspect_ratio", aspectRatio);
@@ -199,31 +164,19 @@ export default function Home() {
 
             const endpoint = mode === "image" ? `${process.env.NEXT_PUBLIC_API_URL}/generate-image` : `${process.env.NEXT_PUBLIC_API_URL}/generate-video`;
             const res = await axios.post(endpoint, formData, { headers: { "Content-Type": "multipart/form-data" } });
-
-            fetchProfile(session.user.id);
-            fetchHistory(session.user.id);
-
-            const url = res.data.image || res.data.video;
-            setPendingResult(url); // Vai para o useEffect aguardar o anúncio
-
+            fetchProfile(session.user.id); fetchHistory(session.user.id);
+            setPendingResult(res.data.image || res.data.video);
         } catch (error: any) {
-            alert(error.response?.data?.detail || "Erro.");
-            setLoading(false);
+            alert(error.response?.data?.detail || "Erro."); setLoading(false);
             if (mode === "image") setResultUrl(previousResult);
         }
     };
 
-    // --- TRY ON CORRIGIDO (Com Anúncio e Preço 10) ---
     const handleTryOn = async () => {
         if (!personFile || !garmentFile) return alert("Selecione as duas fotos.");
-
-        // Verifica 10 créditos
         if (credits < 10) { alert("Saldo insuficiente (10 créditos)."); setIsStoreOpen(true); return; }
 
-        prepareAd(); // Inicia Anúncio
-        setLoading(true);
-        setResultUrl(null);
-        setPendingResult(null);
+        prepareAd(); setLoading(true); setResultUrl(null); setPendingResult(null);
 
         const formData = new FormData();
         formData.append("user_id", session.user.id);
@@ -232,11 +185,9 @@ export default function Home() {
 
         try {
             const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/generate-tryon`, formData, { headers: { "Content-Type": "multipart/form-data" } });
-            fetchProfile(session.user.id);
-            setPendingResult(res.data.image); // Aguarda Anúncio
+            fetchProfile(session.user.id); setPendingResult(res.data.image);
         } catch (error: any) {
-            alert(error.response?.data?.detail || "Erro.");
-            setLoading(false);
+            alert(error.response?.data?.detail || "Erro no Provador."); setLoading(false);
         }
     };
 
@@ -254,7 +205,6 @@ export default function Home() {
 
     const handleAdEnded = () => { setAdFinished(true); };
     const handleSkipAd = () => { setAdFinished(true); };
-
     const copyReferral = () => { navigator.clipboard.writeText(`https://nastia-studio.netlify.app?ref=${referralCode}`); alert("Link Copiado!"); }
     const handleDownload = (url: string, type: string) => { const link = document.createElement("a"); link.href = url; link.download = `NastIA.${type === 'image' ? 'jpg' : 'mp4'}`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
     const handleShare = async (url: string, type: string) => { if (navigator.share) try { const res = await fetch(url); const blob = await res.blob(); await navigator.share({ files: [new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type })] }); } catch (e) { } else alert("Use Baixar."); };
@@ -309,17 +259,7 @@ export default function Home() {
             )}
 
             {loading && (
-                <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center">
-                    <div className="animate-pulse text-yellow-500 mb-4"><Sparkles className="w-8 h-8 mx-auto" /></div>
-                    <div className="w-full h-full absolute inset-0"><AdPlayer src={currentAdUrl} onEnded={handleAdEnded} /></div>
-                    {/* BOTÃO PULAR */}
-                    {pendingResult ? (
-                        <button onClick={handleSkipAd} className="absolute bottom-10 bg-green-500 text-black px-6 py-3 rounded-full font-bold shadow-lg animate-bounce flex items-center gap-2"><CheckCircle className="w-5 h-5" /> SEU RESULTADO ESTÁ PRONTO!</button>
-                    ) : (
-                        <div className="absolute bottom-10 bg-black/50 text-white/70 px-4 py-2 rounded-full text-xs backdrop-blur-md">Criando sua arte... {Math.round(adProgress)}%</div>
-                    )}
-                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} /></div>
-                </div>
+                <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center"><div className="animate-pulse text-yellow-500 mb-4"><Sparkles className="w-8 h-8 mx-auto" /></div><div className="w-full h-full absolute inset-0"><AdPlayer src={currentAdUrl} onEnded={handleAdEnded} /></div>{pendingResult ? <button onClick={handleSkipAd} className="absolute bottom-10 bg-green-500 text-black px-6 py-3 rounded-full font-bold shadow-lg animate-bounce flex items-center gap-2"><CheckCircle className="w-5 h-5" /> SEU RESULTADO ESTÁ PRONTO!</button> : <div className="absolute bottom-10 bg-black/50 text-white/70 px-4 py-2 rounded-full text-xs backdrop-blur-md">Criando sua arte... {Math.round(adProgress)}%</div>}<div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} /></div></div>
             )}
 
             <div className="flex-1 w-full flex flex-col overflow-hidden relative">
@@ -366,21 +306,9 @@ export default function Home() {
                             <div className="w-full flex flex-col md:flex-row gap-4 h-[65vh] md:h-[calc(100vh-140px)]">
                                 <div className="w-full md:w-1/3 bg-[#0f0f10] border border-gray-800 rounded-3xl p-4 overflow-y-auto hidden md:block">
                                     <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">Especialistas</h3>
-                                    <div className="space-y-2">
-                                        {PERSONAS.map(persona => (
-                                            <div key={persona.id} onClick={() => { setCurrentPersona(persona); setChatHistory([]); }} className={`p-4 rounded-2xl cursor-pointer border transition-all ${currentPersona.id === persona.id ? "bg-purple-900/20 border-purple-500/50" : "bg-gray-900/30 border-transparent hover:bg-gray-800"}`}>
-                                                <div className="font-bold text-sm text-white">{persona.name}</div>
-                                                <div className="text-[10px] text-gray-500 mt-1">{persona.role}</div>
-                                            </div>
-                                        ))}
-                                    </div>
+                                    <div className="space-y-2">{PERSONAS.map(p => <div key={p.id} onClick={() => { setCurrentPersona(p); setChatHistory([]); }} className={`p-4 rounded-2xl cursor-pointer border transition-all ${currentPersona.id === p.id ? "bg-purple-900/20 border-purple-500/50" : "bg-gray-900/30 border-transparent hover:bg-gray-800"}`}><div className="font-bold text-sm text-white">{p.name}</div><div className="text-[10px] text-gray-500 mt-1">{p.role}</div></div>)}</div>
                                 </div>
-                                <div className="md:hidden w-full">
-                                    <select onChange={(e) => { const p = PERSONAS.find(p => p.id === e.target.value); if (p) { setCurrentPersona(p); setChatHistory([]); } }} className="w-full bg-[#18181b] text-white p-3 rounded-xl border border-gray-700 outline-none">
-                                        {PERSONAS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                    </select>
-                                </div>
-
+                                <div className="md:hidden w-full"><select onChange={(e) => { const p = PERSONAS.find(x => x.id === e.target.value); if (p) { setCurrentPersona(p); setChatHistory([]); } }} className="w-full bg-[#18181b] text-white p-3 rounded-xl border border-gray-700 outline-none">{PERSONAS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
                                 <div className="flex-1 bg-[#0f0f10] border border-gray-800 rounded-3xl flex flex-col overflow-hidden relative shadow-inner">
                                     <div className="flex-1 overflow-y-auto p-4 space-y-4">{chatHistory.length === 0 && <div className="h-full flex flex-col items-center justify-center text-gray-600 text-center p-6"><Bot className="w-16 h-16 mb-4 text-purple-900/30" /><p className="text-lg font-bold text-gray-300">Olá! Sou a {currentPersona.name}.</p><p className="text-sm mt-2 max-w-xs">{currentPersona.prompt.split('.')[1]}</p></div>}{chatHistory.map((msg, i) => <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed shadow-md ${msg.role === "user" ? "bg-white text-black" : "bg-[#18181b] text-gray-200 border border-gray-800"}`}>{msg.parts}</div></div>)}{chatLoading && <div className="text-gray-500 text-xs animate-pulse ml-4">Digitando...</div>}<div ref={chatEndRef} /></div>
                                     <div className="p-4 border-t border-gray-800 bg-[#0a0a0a] flex gap-2"><input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleChatSend()} placeholder="Digite sua mensagem..." className="flex-1 bg-[#18181b] border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-purple-500 outline-none transition-all" /><button onClick={handleChatSend} disabled={chatLoading} className="bg-purple-600 hover:bg-purple-500 text-white p-3 rounded-xl transition-all shadow-lg"><Send className="w-5 h-5" /></button></div>
