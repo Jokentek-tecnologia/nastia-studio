@@ -22,7 +22,7 @@ const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
     loading: () => <div className="text-white text-center p-10">Carregando Editor...</div>
 });
 
-// LINKS DO SUPABASE
+// LINKS DO SUPABASE (ADS)
 const SHORT_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 const LONG_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 
@@ -61,7 +61,7 @@ export default function Home() {
     const [pendingResult, setPendingResult] = useState<string | null>(null);
     const [adFinished, setAdFinished] = useState(false);
     const [adProgress, setAdProgress] = useState(0);
-    const [showAdClose, setShowAdClose] = useState(false); // Safety valve
+    const [showAdClose, setShowAdClose] = useState(false);
 
     const [history, setHistory] = useState<any[]>([]);
     const [notifications, setNotifications] = useState<any[]>([]);
@@ -79,7 +79,6 @@ export default function Home() {
     const chatEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Efeito para finalizar o processo APENAS se o anúncio acabou E o resultado chegou
     useEffect(() => {
         if (adFinished && pendingResult) {
             setResultUrl(pendingResult);
@@ -149,7 +148,6 @@ export default function Home() {
         setAdProgress(0);
         setAdFinished(false);
         setShowAdClose(false);
-        // Safety valve: Show close button after 15 seconds in case ad/api freezes
         setTimeout(() => setShowAdClose(true), 15000);
     };
 
@@ -185,7 +183,7 @@ export default function Home() {
         } catch (error: any) {
             console.error(error);
             alert(error.response?.data?.detail || "Erro na geração. Tente novamente.");
-            setLoading(false); // Important: Release lock on error
+            setLoading(false);
             if (mode === "image") setResultUrl(previousResult);
         }
     };
@@ -207,7 +205,7 @@ export default function Home() {
         } catch (error: any) {
             console.error(error);
             alert(error.response?.data?.detail || "Erro no Provador.");
-            setLoading(false); // Important: Release lock on error
+            setLoading(false);
         }
     };
 
@@ -225,17 +223,12 @@ export default function Home() {
 
     const handleAdEnded = () => { setAdFinished(true); };
     const handleSkipAd = () => { setAdFinished(true); };
-    const handleForceCloseAd = () => {
-        // Safety valve trigger
-        setLoading(false);
-        if (pendingResult) setResultUrl(pendingResult);
-    };
+    const handleForceCloseAd = () => { setLoading(false); if (pendingResult) setResultUrl(pendingResult); };
 
     const copyReferral = () => { navigator.clipboard.writeText(`https://nastia-studio.netlify.app?ref=${referralCode}`); alert("Link Copiado!"); }
     const handleDownload = (url: string, type: string) => { const link = document.createElement("a"); link.href = url; link.download = `NastIA.${type === 'image' ? 'jpg' : 'mp4'}`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
     const handleShare = async (url: string, type: string) => { if (navigator.share) try { const res = await fetch(url); const blob = await res.blob(); await navigator.share({ files: [new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type })] }); } catch (e) { } else alert("Use Baixar."); };
 
-    // Animação da barra de progresso falsa (apenas visual)
     useEffect(() => { if (loading && !adFinished) { const i = setInterval(() => setAdProgress(o => (o < 95 ? o + 0.5 : o)), 100); return () => clearInterval(i); } }, [loading, adFinished]);
 
     const toggleStore = () => { setIsStoreOpen(!isStoreOpen); setShowNotifications(false); };
@@ -291,7 +284,6 @@ export default function Home() {
                     <div className="animate-pulse text-yellow-500 mb-4"><Sparkles className="w-8 h-8 mx-auto" /></div>
                     <div className="w-full h-full absolute inset-0"><AdPlayer src={currentAdUrl} onEnded={handleAdEnded} /></div>
 
-                    {/* Botão de Fechar de Segurança (Caso trave) */}
                     {showAdClose && (
                         <button onClick={handleForceCloseAd} className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 p-2 rounded-full z-50 text-white">
                             <X className="w-6 h-6" />
