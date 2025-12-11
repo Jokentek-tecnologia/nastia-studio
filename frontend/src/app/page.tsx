@@ -5,8 +5,8 @@ import axios from "axios";
 import {
     Sparkles, Image as ImageIcon, Video as VideoIcon, Shirt,
     XCircle, LogOut, Coins, Gift,
-    Share2, Download, Instagram, Plus,
-    ArrowRightCircle, Layers, Clock, CheckCircle, Bell, ExternalLink, ChevronDown,
+    Share2, Download, Plus,
+    Layers, Clock, CheckCircle, Bell, ChevronDown,
     X, MessageSquare, Send, Bot, PlayCircle, Eye, Upload
 } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -50,7 +50,6 @@ export default function Home() {
     const [mode, setMode] = useState<"home" | "image" | "video" | "gallery" | "chat" | "tryon">("home");
     const [prompt, setPrompt] = useState("");
     const [imageFiles, setImageFiles] = useState<File[]>([]);
-    const [isMobile, setIsMobile] = useState(false);
     const [aspectRatio, setAspectRatio] = useState<string>("16:9");
 
     const [personFile, setPersonFile] = useState<File | null>(null);
@@ -62,6 +61,7 @@ export default function Home() {
     const [pendingResult, setPendingResult] = useState<string | null>(null);
     const [adFinished, setAdFinished] = useState(false);
     const [adProgress, setAdProgress] = useState(0);
+    const [showAdClose, setShowAdClose] = useState(false); // Safety valve
 
     const [history, setHistory] = useState<any[]>([]);
     const [notifications, setNotifications] = useState<any[]>([]);
@@ -79,20 +79,16 @@ export default function Home() {
     const chatEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Efeito para finalizar o processo APENAS se o anúncio acabou E o resultado chegou
     useEffect(() => {
         if (adFinished && pendingResult) {
             setResultUrl(pendingResult);
             setLoading(false);
             setPendingResult(null);
             setAdFinished(false);
+            setShowAdClose(false);
         }
     }, [adFinished, pendingResult]);
-
-    useEffect(() => {
-        const check = () => setIsMobile(window.innerWidth < 768);
-        check(); window.addEventListener('resize', check);
-        return () => window.removeEventListener('resize', check);
-    }, []);
 
     const fetchProfile = async (userId: string) => {
         const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
@@ -115,7 +111,21 @@ export default function Home() {
     };
 
     const handleLoginSuccess = async (session: any) => { fetchProfile(session.user.id); fetchHistory(session.user.id); fetchNotifications(); };
-    useEffect(() => { supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); if (session) handleLoginSuccess(session); setAuthLoading(false); }); const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => { setSession(session); if (session) handleLoginSuccess(session); else setAuthLoading(false); }); return () => subscription.unsubscribe(); }, []);
+
+    useEffect(() => {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setSession(session);
+            if (session) handleLoginSuccess(session);
+            setAuthLoading(false);
+        });
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+            setSession(session);
+            if (session) handleLoginSuccess(session);
+            else setAuthLoading(false);
+        });
+        return () => subscription.unsubscribe();
+    }, []);
+
     useEffect(() => { if (mode === 'chat') chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory, mode]);
 
     const handleLogout = async () => await supabase.auth.signOut();
@@ -133,13 +143,14 @@ export default function Home() {
         } catch (e) { }
     };
 
-    const handleEditFromGallery = async (url: string) => { setResultUrl(url); setIsEditorOpen(true); setSelectedMedia(null); }
-
     const prepareAd = () => {
         const list = mode === "image" || mode === "tryon" ? SHORT_ADS : LONG_ADS;
         setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]);
         setAdProgress(0);
         setAdFinished(false);
+        setShowAdClose(false);
+        // Safety valve: Show close button after 15 seconds in case ad/api freezes
+        setTimeout(() => setShowAdClose(true), 15000);
     };
 
     const handleGenerate = async () => {
@@ -172,8 +183,9 @@ export default function Home() {
             setPendingResult(res.data.image || res.data.video);
 
         } catch (error: any) {
-            alert(error.response?.data?.detail || "Erro na geração.");
-            setLoading(false);
+            console.error(error);
+            alert(error.response?.data?.detail || "Erro na geração. Tente novamente.");
+            setLoading(false); // Important: Release lock on error
             if (mode === "image") setResultUrl(previousResult);
         }
     };
@@ -193,7 +205,9 @@ export default function Home() {
             const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/generate-tryon`, formData, { headers: { "Content-Type": "multipart/form-data" } });
             fetchProfile(session.user.id); setPendingResult(res.data.image);
         } catch (error: any) {
-            alert(error.response?.data?.detail || "Erro no Provador."); setLoading(false);
+            console.error(error);
+            alert(error.response?.data?.detail || "Erro no Provador.");
+            setLoading(false); // Important: Release lock on error
         }
     };
 
@@ -211,10 +225,17 @@ export default function Home() {
 
     const handleAdEnded = () => { setAdFinished(true); };
     const handleSkipAd = () => { setAdFinished(true); };
+    const handleForceCloseAd = () => {
+        // Safety valve trigger
+        setLoading(false);
+        if (pendingResult) setResultUrl(pendingResult);
+    };
 
     const copyReferral = () => { navigator.clipboard.writeText(`https://nastia-studio.netlify.app?ref=${referralCode}`); alert("Link Copiado!"); }
     const handleDownload = (url: string, type: string) => { const link = document.createElement("a"); link.href = url; link.download = `NastIA.${type === 'image' ? 'jpg' : 'mp4'}`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
     const handleShare = async (url: string, type: string) => { if (navigator.share) try { const res = await fetch(url); const blob = await res.blob(); await navigator.share({ files: [new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type })] }); } catch (e) { } else alert("Use Baixar."); };
+
+    // Animação da barra de progresso falsa (apenas visual)
     useEffect(() => { if (loading && !adFinished) { const i = setInterval(() => setAdProgress(o => (o < 95 ? o + 0.5 : o)), 100); return () => clearInterval(i); } }, [loading, adFinished]);
 
     const toggleStore = () => { setIsStoreOpen(!isStoreOpen); setShowNotifications(false); };
@@ -266,7 +287,29 @@ export default function Home() {
             )}
 
             {loading && (
-                <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center"><div className="animate-pulse text-yellow-500 mb-4"><Sparkles className="w-8 h-8 mx-auto" /></div><div className="w-full h-full absolute inset-0"><AdPlayer src={currentAdUrl} onEnded={handleAdEnded} /></div>{pendingResult ? <button onClick={handleSkipAd} className="absolute bottom-10 bg-green-500 text-black px-6 py-3 rounded-full font-bold shadow-lg animate-bounce flex items-center gap-2"><CheckCircle className="w-5 h-5" /> SEU RESULTADO ESTÁ PRONTO!</button> : <div className="absolute bottom-10 bg-black/50 text-white/70 px-4 py-2 rounded-full text-xs backdrop-blur-md">Criando sua arte... {Math.round(adProgress)}%</div>}<div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} /></div></div>
+                <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center">
+                    <div className="animate-pulse text-yellow-500 mb-4"><Sparkles className="w-8 h-8 mx-auto" /></div>
+                    <div className="w-full h-full absolute inset-0"><AdPlayer src={currentAdUrl} onEnded={handleAdEnded} /></div>
+
+                    {/* Botão de Fechar de Segurança (Caso trave) */}
+                    {showAdClose && (
+                        <button onClick={handleForceCloseAd} className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 p-2 rounded-full z-50 text-white">
+                            <X className="w-6 h-6" />
+                        </button>
+                    )}
+
+                    {pendingResult ? (
+                        <button onClick={handleSkipAd} className="absolute bottom-10 bg-green-500 text-black px-6 py-3 rounded-full font-bold shadow-lg animate-bounce flex items-center gap-2 cursor-pointer z-50">
+                            <CheckCircle className="w-5 h-5" /> SEU RESULTADO ESTÁ PRONTO! (Clique)
+                        </button>
+                    ) : (
+                        <div className="absolute bottom-10 bg-black/50 text-white/70 px-4 py-2 rounded-full text-xs backdrop-blur-md z-40">
+                            Criando sua arte... {Math.round(adProgress)}%
+                        </div>
+                    )}
+
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-purple-600 transition-all duration-100 ease-linear" style={{ width: `${adProgress}%` }} /></div>
+                </div>
             )}
 
             <div className="flex-1 w-full flex flex-col overflow-hidden relative">
