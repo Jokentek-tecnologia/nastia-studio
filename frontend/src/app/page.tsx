@@ -22,7 +22,7 @@ const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
     loading: () => <div className="text-white text-center p-10">Carregando Editor...</div>
 });
 
-// LINKS DO SUPABASE (ADS)
+// --- SEU LINK DO SUPABASE AQUI ---
 const SHORT_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 const LONG_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 
@@ -58,10 +58,12 @@ export default function Home() {
     const [resultUrl, setResultUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [currentAdUrl, setCurrentAdUrl] = useState("");
+
+    // Novas variáveis para controlar a sincronia Anúncio x Resultado
     const [pendingResult, setPendingResult] = useState<string | null>(null);
     const [adFinished, setAdFinished] = useState(false);
+
     const [adProgress, setAdProgress] = useState(0);
-    const [showAdClose, setShowAdClose] = useState(false);
 
     const [history, setHistory] = useState<any[]>([]);
     const [notifications, setNotifications] = useState<any[]>([]);
@@ -79,13 +81,13 @@ export default function Home() {
     const chatEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // --- CORREÇÃO: Sincroniza o fim do anúncio com a chegada do resultado ---
     useEffect(() => {
         if (adFinished && pendingResult) {
             setResultUrl(pendingResult);
             setLoading(false);
             setPendingResult(null);
             setAdFinished(false);
-            setShowAdClose(false);
         }
     }, [adFinished, pendingResult]);
 
@@ -146,9 +148,7 @@ export default function Home() {
         const list = mode === "image" || mode === "tryon" ? SHORT_ADS : LONG_ADS;
         setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]);
         setAdProgress(0);
-        setAdFinished(false);
-        setShowAdClose(false);
-        setTimeout(() => setShowAdClose(true), 15000);
+        setAdFinished(false); // Reseta estado do anúncio
     };
 
     const handleGenerate = async () => {
@@ -178,11 +178,12 @@ export default function Home() {
             const res = await axios.post(endpoint, formData, { headers: { "Content-Type": "multipart/form-data" } });
 
             fetchProfile(session.user.id); fetchHistory(session.user.id);
+            // Salva no estado pendente e espera o useEffect resolver
             setPendingResult(res.data.image || res.data.video);
 
         } catch (error: any) {
             console.error(error);
-            alert(error.response?.data?.detail || "Erro na geração. Tente novamente.");
+            alert(error.response?.data?.detail || "Erro na geração.");
             setLoading(false);
             if (mode === "image") setResultUrl(previousResult);
         }
@@ -201,7 +202,9 @@ export default function Home() {
 
         try {
             const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/generate-tryon`, formData, { headers: { "Content-Type": "multipart/form-data" } });
-            fetchProfile(session.user.id); setPendingResult(res.data.image);
+            fetchProfile(session.user.id);
+            // Salva no estado pendente e espera o useEffect resolver
+            setPendingResult(res.data.image);
         } catch (error: any) {
             console.error(error);
             alert(error.response?.data?.detail || "Erro no Provador.");
@@ -222,13 +225,13 @@ export default function Home() {
     };
 
     const handleAdEnded = () => { setAdFinished(true); };
-    const handleSkipAd = () => { setAdFinished(true); };
-    const handleForceCloseAd = () => { setLoading(false); if (pendingResult) setResultUrl(pendingResult); };
+    const handleSkipAd = () => { setAdFinished(true); }; // Botão de pular também dispara o fim
 
     const copyReferral = () => { navigator.clipboard.writeText(`https://nastia-studio.netlify.app?ref=${referralCode}`); alert("Link Copiado!"); }
     const handleDownload = (url: string, type: string) => { const link = document.createElement("a"); link.href = url; link.download = `NastIA.${type === 'image' ? 'jpg' : 'mp4'}`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
     const handleShare = async (url: string, type: string) => { if (navigator.share) try { const res = await fetch(url); const blob = await res.blob(); await navigator.share({ files: [new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type })] }); } catch (e) { } else alert("Use Baixar."); };
 
+    // Animação da barra de progresso
     useEffect(() => { if (loading && !adFinished) { const i = setInterval(() => setAdProgress(o => (o < 95 ? o + 0.5 : o)), 100); return () => clearInterval(i); } }, [loading, adFinished]);
 
     const toggleStore = () => { setIsStoreOpen(!isStoreOpen); setShowNotifications(false); };
@@ -283,12 +286,6 @@ export default function Home() {
                 <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 text-center">
                     <div className="animate-pulse text-yellow-500 mb-4"><Sparkles className="w-8 h-8 mx-auto" /></div>
                     <div className="w-full h-full absolute inset-0"><AdPlayer src={currentAdUrl} onEnded={handleAdEnded} /></div>
-
-                    {showAdClose && (
-                        <button onClick={handleForceCloseAd} className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 p-2 rounded-full z-50 text-white">
-                            <X className="w-6 h-6" />
-                        </button>
-                    )}
 
                     {pendingResult ? (
                         <button onClick={handleSkipAd} className="absolute bottom-10 bg-green-500 text-black px-6 py-3 rounded-full font-bold shadow-lg animate-bounce flex items-center gap-2 cursor-pointer z-50">
