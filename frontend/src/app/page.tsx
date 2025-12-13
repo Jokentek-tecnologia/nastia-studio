@@ -22,7 +22,7 @@ const ImageEditor = dynamic(() => import("../components/ImageEditor"), {
     loading: () => <div className="text-white text-center p-10">Carregando Editor...</div>
 });
 
-// --- SEU LINK DO SUPABASE AQUI ---
+// LINKS DO SEU ANÚNCIO NO SUPABASE
 const SHORT_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 const LONG_ADS = ["https://lpiotuazwilvxhdjxgjo.supabase.co/storage/v1/object/public/public-assets/VID-20251203-WA0000.mp4"];
 
@@ -59,10 +59,9 @@ export default function Home() {
     const [loading, setLoading] = useState(false);
     const [currentAdUrl, setCurrentAdUrl] = useState("");
 
-    // Novas variáveis para controlar a sincronia Anúncio x Resultado
+    // Sincronia Anúncio x Resultado
     const [pendingResult, setPendingResult] = useState<string | null>(null);
     const [adFinished, setAdFinished] = useState(false);
-
     const [adProgress, setAdProgress] = useState(0);
 
     const [history, setHistory] = useState<any[]>([]);
@@ -81,7 +80,7 @@ export default function Home() {
     const chatEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // --- CORREÇÃO: Sincroniza o fim do anúncio com a chegada do resultado ---
+    // LÓGICA DE SINCRONIA (CORREÇÃO DO TRAVAMENTO)
     useEffect(() => {
         if (adFinished && pendingResult) {
             setResultUrl(pendingResult);
@@ -148,7 +147,7 @@ export default function Home() {
         const list = mode === "image" || mode === "tryon" ? SHORT_ADS : LONG_ADS;
         setCurrentAdUrl(list[Math.floor(Math.random() * list.length)]);
         setAdProgress(0);
-        setAdFinished(false); // Reseta estado do anúncio
+        setAdFinished(false);
     };
 
     const handleGenerate = async () => {
@@ -178,7 +177,7 @@ export default function Home() {
             const res = await axios.post(endpoint, formData, { headers: { "Content-Type": "multipart/form-data" } });
 
             fetchProfile(session.user.id); fetchHistory(session.user.id);
-            // Salva no estado pendente e espera o useEffect resolver
+            // Salva em "pendente" para esperar o anúncio
             setPendingResult(res.data.image || res.data.video);
 
         } catch (error: any) {
@@ -203,7 +202,7 @@ export default function Home() {
         try {
             const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/generate-tryon`, formData, { headers: { "Content-Type": "multipart/form-data" } });
             fetchProfile(session.user.id);
-            // Salva no estado pendente e espera o useEffect resolver
+            // Salva em "pendente" para esperar o anúncio
             setPendingResult(res.data.image);
         } catch (error: any) {
             console.error(error);
@@ -225,13 +224,12 @@ export default function Home() {
     };
 
     const handleAdEnded = () => { setAdFinished(true); };
-    const handleSkipAd = () => { setAdFinished(true); }; // Botão de pular também dispara o fim
+    const handleSkipAd = () => { setAdFinished(true); };
 
     const copyReferral = () => { navigator.clipboard.writeText(`https://nastia-studio.netlify.app?ref=${referralCode}`); alert("Link Copiado!"); }
     const handleDownload = (url: string, type: string) => { const link = document.createElement("a"); link.href = url; link.download = `NastIA.${type === 'image' ? 'jpg' : 'mp4'}`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
     const handleShare = async (url: string, type: string) => { if (navigator.share) try { const res = await fetch(url); const blob = await res.blob(); await navigator.share({ files: [new File([blob], "nastia." + (type === 'image' ? 'jpg' : 'mp4'), { type: blob.type })] }); } catch (e) { } else alert("Use Baixar."); };
 
-    // Animação da barra de progresso
     useEffect(() => { if (loading && !adFinished) { const i = setInterval(() => setAdProgress(o => (o < 95 ? o + 0.5 : o)), 100); return () => clearInterval(i); } }, [loading, adFinished]);
 
     const toggleStore = () => { setIsStoreOpen(!isStoreOpen); setShowNotifications(false); };

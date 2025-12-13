@@ -2,12 +2,11 @@
 const nextConfig = {
   reactStrictMode: true,
   eslint: {
-    // ISSO É O QUE VAI SALVAR SEU DEPLOY
-    // Manda o Netlify ignorar erros de "variável não usada" e subir o site
+    // IGNORA ERROS DE LINT NO BUILD (ESSENCIAL PARA DEPLOY RÁPIDO)
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // Manda ignorar erros de tipagem
+    // IGNORA ERROS DE TYPESCRIPT NO BUILD
     ignoreBuildErrors: true,
   },
   images: {
