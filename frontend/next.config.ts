@@ -1,23 +1,8 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  reactStrictMode: true,
-  eslint: {
-    // IGNORA ERROS DE LINT NO BUILD (ESSENCIAL PARA DEPLOY RÁPIDO)
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    // IGNORA ERROS DE TYPESCRIPT NO BUILD
-    ignoreBuildErrors: true,
-  },
-  images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**',
-      },
-    ],
-    unoptimized: true,
-  },
-}
+import type { NextConfig } from "next";
 
-module.exports = nextConfig
+const nextConfig: NextConfig = {
+  /* config options here */
+  reactCompiler: true,
+};
+
+export default nextConfig;
